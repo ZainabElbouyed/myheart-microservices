@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Confirmation de rendez-vous</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #1976d2;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            padding: 20px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+        .details {
+            background-color: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #1976d2;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #1976d2;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MyHeart Healthcare</h1>
+    </div>
+    
+    <div class="content">
+        <h2>Confirmation de votre rendez-vous</h2>
+        
+        <p>Bonjour <span th:text="${patientName}">Patient</span>,</p>
+        
+        <p>Votre rendez-vous a été confirmé avec succès. Voici les détails :</p>
+        
+        <div class="details">
+            <p><strong>Médecin :</strong> <span th:text="${doctorName}">Dr. Martin</span></p>
+            <p><strong>Date :</strong> <span th:text="${appointmentDate}">25/02/2026</span></p>
+            <p><strong>Heure :</strong> <span th:text="${appointmentTime}">14:30</span></p>
+            <p><strong>Type :</strong> <span th:text="${appointmentType}">Consultation</span></p>
+            <p><strong>Lieu :</strong> <span th:text="${location}">Cabinet 101</span></p>
+            <p th:if="${isVirtual}"><strong>Lien de visioconférence :</strong> <a th:href="${meetingLink}" th:text="${meetingLink}">Lien</a></p>
+        </div>
+        
+        <p>Merci de votre confiance,</p>
+        <p>L'équipe MyHeart</p>
+        
+        <a th:href="${portalLink}" class="button">Voir dans mon espace</a>
+    </div>
+    
+    <div class="footer">
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+        <p>&copy; 2026 MyHeart Healthcare. Tous droits réservés.</p>
+    </div>
+</body>
+</html>

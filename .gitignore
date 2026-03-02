@@ -1,0 +1,73 @@
+# Créer un fichier .gitignore
+cat > .gitignore << EOF
+# IDE
+.vscode/
+.classpath
+.project
+.settings/
+*.iml
+*.iws
+*.ipr
+.idea/
+
+# Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.sql
+hs_err_pid*
+
+# Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+
+# React build
+build/
+dist/
+*.css.map
+*.js.map
+
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+!docker-compose.yml
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Backup files
+*.bak
+*.swp
+*~
+EOF

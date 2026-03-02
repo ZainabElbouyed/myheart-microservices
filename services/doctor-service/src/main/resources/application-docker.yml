@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: doctor-service
+  
+  datasource:
+    url: jdbc:postgresql://postgres:5432/patientdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+  
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: myheart
+    password: myheart123
+
+server:
+  port: 8083
+
+jwt:
+  secret: ${JWT_SECRET}
+
+
+
+patient:
+  service:
+    url: http://patient-service:8082
+
+lab:
+  service:
+    url: http://lab-service:8086
+
+prescription:
+  service:
+    url: http://prescription-service:8087
+
+appointment:
+  service:
+    url: http://appointment-service:8084
+
+logging:
+  level:
+    com.myheart: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: notification-service
+  
+  main:
+    allow-bean-definition-overriding: true
+
+  data:
+    mongodb:
+      uri: mongodb://mongodb:27017/notifications
+      auto-index-creation: true
+  
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: myheart
+    password: myheart123
+  
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${SMTP_USER:your-email@gmail.com}
+    password: ${SMTP_PASS:your-app-password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+
+server:
+  port: 8089
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+jwt:
+  secret: ${JWT_SECRET}
+
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID:}
+  auth-token: ${TWILIO_AUTH_TOKEN:}
+  phone-number: ${TWILIO_PHONE_NUMBER:}
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.springframework.mail: INFO
+    com.twilio: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

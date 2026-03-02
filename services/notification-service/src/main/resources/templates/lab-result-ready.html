@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Résultat de laboratoire disponible</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #1976d2;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            padding: 20px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+        .details {
+            background-color: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #1976d2;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .warning {
+            color: #f57c00;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MyHeart Healthcare</h1>
+    </div>
+    
+    <div class="content">
+        <h2>Résultat de laboratoire disponible</h2>
+        
+        <p>Bonjour <span th:text="${patientName}">Patient</span>,</p>
+        
+        <p>Votre résultat de laboratoire est maintenant disponible :</p>
+        
+        <div class="details">
+            <p><strong>Examen :</strong> <span th:text="${testType}">Analyse sanguine</span></p>
+            <p><strong>Date de l'examen :</strong> <span th:text="${testDate}">25/02/2026</span></p>
+            <p><strong>Médecin prescripteur :</strong> <span th:text="${doctorName}">Dr. Martin</span></p>
+            <p th:if="${isAbnormal}" class="warning"><strong>⚠️ Des résultats anormaux ont été détectés. Veuillez consulter votre médecin.</strong></p>
+        </div>
+        
+        <p>Vous pouvez consulter vos résultats détaillés en vous connectant à votre espace patient.</p>
+        
+        <a th:href="${portalLink}" class="button">Voir mes résultats</a>
+    </div>
+    
+    <div class="footer">
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+        <p>&copy; 2026 MyHeart Healthcare. Tous droits réservés.</p>
+    </div>
+</body>
+</html>

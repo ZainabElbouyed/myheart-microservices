@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: lab-service
+  
+  data:
+    mongodb:
+      uri: mongodb://myheart:myheart123@mongodb:27017/labdb?authSource=admin
+      auto-index-creation: false
+  
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: myheart
+    password: myheart123
+
+server:
+  port: 8086
+
+jwt:
+  secret: ${JWT_SECRET}
+  
+
+patient:
+  service:
+    url: http://patient-service:8082
+
+doctor:
+  service:
+    url: http://doctor-service:8083
+
+notification:
+  service:
+    url: http://notification-service:8089
+
+logging:
+  level:
+    com.myheart: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

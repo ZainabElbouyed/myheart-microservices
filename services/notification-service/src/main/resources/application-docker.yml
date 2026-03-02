@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: notification-service
+  
+  data:
+    mongodb:
+      uri: mongodb://myheart:myheart123@mongodb:27017/notifications?authSource=admin
+      auto-index-creation: false
+  
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: myheart
+    password: myheart123
+  
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT}
+    username: ${SMTP_USER}
+    password: ${SMTP_PASS}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+server:
+  port: 8089
+
+jwt:
+  secret: ${JWT_SECRET:myheartSecretKey2024ForJWTTokenGeneration}
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID}
+  auth-token: ${TWILIO_AUTH_TOKEN}
+  phone-number: ${TWILIO_PHONE_NUMBER}
+
+logging:
+  level:
+    com.myheart: INFO

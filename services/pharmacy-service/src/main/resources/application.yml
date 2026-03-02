@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: pharmacy-service
+  
+  datasource:
+    url: jdbc:mysql://localhost:3307/pharmacydb
+    username: myheart
+    password: myheart123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+    show-sql: true
+
+server:
+  port: 8088
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+jwt:
+  secret: ${JWT_SECRET}
+
+prescription:
+  service:
+    url: http://localhost:8087
+
+patient:
+  service:
+    url: http://localhost:8082
+
+doctor:
+  service:
+    url: http://localhost:8083
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.hibernate: ERROR
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: pharmacy-service
+  
+  datasource:
+    url: jdbc:mysql://mysql:3306/pharmacydb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC 
+    username: myheart
+    password: myheart123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    show-sql: false
+
+server:
+  port: 8088
+
+jwt:
+  secret: ${JWT_SECRET}
+
+prescription:
+  service:
+    url: http://prescription-service:8087
+
+patient:
+  service:
+    url: http://patient-service:8082
+
+doctor:
+  service:
+    url: http://doctor-service:8083
+
+logging:
+  level:
+    com.myheart: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

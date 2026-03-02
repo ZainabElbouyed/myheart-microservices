@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: appointment-service
+  
+  datasource:
+    url: jdbc:postgresql://postgres:5432/appointmentdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+  
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: myheart
+    password: myheart123
+
+server:
+  port: 8084
+
+jwt:
+  secret: ${JWT_SECRET:myheartSecretKey2024ForJWTTokenGeneration}
+
+logging:
+  level:
+    com.myheart: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+
+patient:
+  service:
+    url: http://patient-service:8082
+
+doctor:
+  service:
+    url: http://doctor-service:8083
+
+billing:
+  service:
+    url: http://billing-service:8085
+
+notification:
+  service:
+    url: http://notification-service:8089
+
+
+eureka:
+  client:
+    enabled: false

@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: doctor-service
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/patientdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true
+  
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: myheart
+    password: myheart123
+
+server:
+  port: 8083
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+jwt:
+  secret: ${JWT_SECRET}
+
+
+
+patient:
+  service:
+    url: http://localhost:8082
+
+lab:
+  service:
+    url: http://localhost:8086
+
+prescription:
+  service:
+    url: http://localhost:8087
+
+appointment:
+  service:
+    url: http://localhost:8084
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.hibernate: ERROR
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,132 @@
+spring:
+  application:
+    name: api-gateway
+  
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        - id: auth-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/auth/**
+          filters: []
+                
+        - id: patient-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/patients/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: patientService
+                fallbackUri: forward:/fallback/patient
+                
+        - id: doctor-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/doctors/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: doctorService
+                fallbackUri: forward:/fallback/doctor
+                
+        - id: appointment-service
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/appointments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: appointmentService
+                fallbackUri: forward:/fallback/appointment
+                
+        - id: billing-service
+          uri: http://localhost:8085
+          predicates:
+            - Path=/api/billing/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: billingService
+                fallbackUri: forward:/fallback/billing
+                
+        - id: lab-service
+          uri: http://localhost:8086
+          predicates:
+            - Path=/api/lab/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: labService
+                fallbackUri: forward:/fallback/lab
+                
+        - id: prescription-service
+          uri: http://localhost:8087
+          predicates:
+            - Path=/api/prescriptions/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: prescriptionService
+                fallbackUri: forward:/fallback/prescription
+                
+        - id: pharmacy-service
+          uri: http://localhost:8088
+          predicates:
+            - Path=/api/pharmacy/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: pharmacyService
+                fallbackUri: forward:/fallback/pharmacy
+                
+        - id: notification-service
+          uri: http://localhost:8089
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: notificationService
+                fallbackUri: forward:/fallback/notification
+                
+        - id: fallback-route
+          uri: http://localhost:8080
+          predicates:
+            - Path=/fallback/**
+          filters:
+            - name: SetPath
+              args:
+                _genkey_: /fallback
+
+server:
+  port: 8080
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+jwt:
+  secret: ${JWT_SECRET}
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,gateway
+  endpoint:
+    gateway:
+      enabled: true
+    health:
+      show-details: always

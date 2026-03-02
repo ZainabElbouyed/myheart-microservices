@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: prescription-service
+  
+  data:
+    mongodb:
+      uri: mongodb://myheart:myheart123@mongodb:27017/prescriptiondb?authSource=admin
+      auto-index-creation: false
+
+server:
+  port: 8087
+
+jwt:
+  secret: ${JWT_SECRET}
+
+patient:
+  service:
+    url: http://patient-service:8082
+
+doctor:
+  service:
+    url: http://doctor-service:8083
+
+pharmacy:
+  service:
+    url: http://pharmacy-service:8088
+
+logging:
+  level:
+    com.myheart: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

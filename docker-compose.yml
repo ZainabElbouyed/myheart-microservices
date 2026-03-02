@@ -1,0 +1,334 @@
+version: '3.8'
+
+networks:
+  myheart-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  mysql-data:
+  mongodb-data:
+  redis-data:
+  rabbitmq-data:
+
+services:
+  # ============ POSTGRESQL (pour auth, patient, appointment, billing) ============
+  postgres:
+    image: postgres:15-alpine
+    container_name: myheart-postgres
+    environment:
+      POSTGRES_USER: myheart
+      POSTGRES_PASSWORD: myheart123
+      POSTGRES_MULTIPLE_DATABASES: authdb,patientdb,appointmentdb,billingdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myheart"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ MONGODB (pour lab, prescriptions, notifications) ============
+  mongodb:
+    image: mongo:6-jammy
+    container_name: myheart-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: myheart
+      MONGO_INITDB_ROOT_PASSWORD: myheart123
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - ./scripts/init-mongodb.js:/docker-entrypoint-initdb.d/init.js
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ MYSQL (pour pharmacy) ============
+  mysql:
+    image: mysql:8
+    container_name: myheart-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: myheart123
+      MYSQL_DATABASE: pharmacydb
+      MYSQL_USER: myheart
+      MYSQL_PASSWORD: myheart123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pmyheart123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ REDIS (pour cache et sessions) ============
+  redis:
+    image: redis:7-alpine
+    container_name: myheart-redis
+    command: redis-server --appendonly yes --requirepass myheart123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myheart123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ RABBITMQ (pour communication asynchrone) ============
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: myheart-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: myheart
+      RABBITMQ_DEFAULT_PASS: myheart123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ MICROSERVICES ============
+  
+  auth-service:
+    build:
+      context: .  
+      dockerfile: services/auth-service/Dockerfile
+    container_name: myheart-auth
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: authdb
+      DB_USER: myheart
+      DB_PASSWORD: myheart123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: myheart123
+      JWT_SECRET: myheartSecretKey2024ForJWTTokenGeneration
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  patient-service:
+    build:
+      context: . 
+      dockerfile: services/patient-service/Dockerfile
+    container_name: myheart-patient
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: patientdb
+      DB_USER: myheart
+      DB_PASSWORD: myheart123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  doctor-service:
+    build:
+      context: .  
+      dockerfile: services/doctor-service/Dockerfile
+    container_name: myheart-doctor
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: patientdb
+      DB_USER: myheart
+      DB_PASSWORD: myheart123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  appointment-service:
+    build:
+      context: .  
+      dockerfile: services/appointment-service/Dockerfile
+    container_name: myheart-appointment
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: appointmentdb
+      DB_USER: myheart
+      DB_PASSWORD: myheart123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  billing-service:
+    build:
+      context: .  
+      dockerfile: services/billing-service/Dockerfile
+    container_name: myheart-billing
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: billingdb
+      DB_USER: myheart
+      DB_PASSWORD: myheart123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  lab-service:
+    build:
+      context: .  
+      dockerfile: services/lab-service/Dockerfile
+    container_name: myheart-lab
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_MONGODB_URI: mongodb://myheart:myheart123@mongodb:27017/labdb?authSource=admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  prescription-service:
+    build:
+      context: .  
+      dockerfile: services/prescription-service/Dockerfile
+    container_name: myheart-prescription
+    ports:
+      - "8087:8087"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_MONGODB_URI: mongodb://myheart:myheart123@mongodb:27017/prescriptiondb?authSource=admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  pharmacy-service:
+    build:
+      context: .  
+      dockerfile: services/pharmacy-service/Dockerfile
+    container_name: myheart-pharmacy
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: pharmacydb
+      DB_USER: myheart
+      DB_PASSWORD: myheart123
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  notification-service:
+    build:
+      context: .  
+      dockerfile: services/notification-service/Dockerfile
+    container_name: myheart-notification
+    ports:
+      - "8089:8089"
+    environment:
+      NODE_ENV: production
+      PORT: 8089
+      SPRING_DATA_MONGODB_URI: mongodb://myheart:myheart123@mongodb:27017/notifications?authSource=admin
+      RABBITMQ_URL: amqp://myheart:myheart123@rabbitmq:5672
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - myheart-network
+
+  api-gateway:
+    build:
+      context: .  
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: myheart-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JWT_SECRET: myheartSecretKey2024ForJWTTokenGeneration
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PATIENT_SERVICE_URL: http://patient-service:8082
+      DOCTOR_SERVICE_URL: http://doctor-service:8083
+      APPOINTMENT_SERVICE_URL: http://appointment-service:8084
+      BILLING_SERVICE_URL: http://billing-service:8085
+      LAB_SERVICE_URL: http://lab-service:8086
+      PRESCRIPTION_SERVICE_URL: http://prescription-service:8087
+      PHARMACY_SERVICE_URL: http://pharmacy-service:8088
+      NOTIFICATION_SERVICE_URL: http://notification-service:8089
+    depends_on:
+      auth-service:
+        condition: service_started
+    networks:
+      - myheart-network
+
+  frontend:
+    build: ./frontend
+    container_name: myheart-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8080/api
+    depends_on:
+      - api-gateway
+    networks:
+      - myheart-network

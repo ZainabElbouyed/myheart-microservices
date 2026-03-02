@@ -1,0 +1,85 @@
+spring:
+  application:
+    name: appointment-service
+  
+  main:
+    allow-bean-definition-overriding: true
+    
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appointmentdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+    show-sql: true
+  
+  flyway:
+    enabled: false
+    baseline-on-migrate: true
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: myheart
+    password: myheart123
+
+server:
+  port: 8084
+  compression:
+    enabled: true
+    mime-types: "application/json,application/xml,text/html,text/xml,text/plain"
+
+
+jwt:
+  secret: ${JWT_SECRET}
+
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.springframework.web: INFO
+    org.hibernate: ERROR
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics"
+  endpoint:
+    health:
+      show-details: always
+
+patient:
+  service:
+    url: http://localhost:8082
+
+doctor:
+  service:
+    url: http://localhost:8083
+
+billing:
+  service:
+    url: http://localhost:8085
+
+notification:
+  service:
+    url: http://localhost:8089
+
+eureka:
+  client:
+    enabled: false

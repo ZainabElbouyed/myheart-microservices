@@ -1,0 +1,206 @@
+spring:
+  application:
+    name: api-gateway
+  
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:myheart123}
+      timeout: 2000ms
+      connect-timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      
+      routes:
+        # Auth Service
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:http://auth-service:8081}
+          predicates:
+            - Path=/api/auth/**
+          filters: []
+                
+        # Patient Service
+        - id: patient-service
+          uri: ${PATIENT_SERVICE_URL:http://patient-service:8082}
+          predicates:
+            - Path=/api/patients/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: patientService
+                fallbackUri: forward:/fallback/patient
+                
+        # Doctor Service
+        - id: doctor-service
+          uri: ${DOCTOR_SERVICE_URL:http://doctor-service:8083}
+          predicates:
+            - Path=/api/doctors/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: doctorService
+                fallbackUri: forward:/fallback/doctor
+                
+        # Appointment Service
+        - id: appointment-service
+          uri: ${APPOINTMENT_SERVICE_URL:http://appointment-service:8084}
+          predicates:
+            - Path=/api/appointments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: appointmentService
+                fallbackUri: forward:/fallback/appointment
+                
+        # Billing Service
+        - id: billing-service
+          uri: ${BILLING_SERVICE_URL:http://billing-service:8085}
+          predicates:
+            - Path=/api/billing/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: billingService
+                fallbackUri: forward:/fallback/billing
+                
+        # Lab Service
+        - id: lab-service
+          uri: ${LAB_SERVICE_URL:http://lab-service:8086}
+          predicates:
+            - Path=/api/lab/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: labService
+                fallbackUri: forward:/fallback/lab
+                
+        # Prescription Service
+        - id: prescription-service
+          uri: ${PRESCRIPTION_SERVICE_URL:http://prescription-service:8087}
+          predicates:
+            - Path=/api/prescriptions/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: prescriptionService
+                fallbackUri: forward:/fallback/prescription
+                
+        # Pharmacy Service
+        - id: pharmacy-service
+          uri: ${PHARMACY_SERVICE_URL:http://pharmacy-service:8088}
+          predicates:
+            - Path=/api/pharmacy/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: pharmacyService
+                fallbackUri: forward:/fallback/pharmacy
+                
+        # Notification Service
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://notification-service:8089}
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: notificationService
+                fallbackUri: forward:/fallback/notification
+
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "${ALLOWED_ORIGINS:http://localhost:3000}"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+server:
+  port: ${SERVER_PORT:8080}
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+    min-response-size: 1024
+
+jwt:
+  secret: ${JWT_SECRET:myheartSecretKey2024ForJWTTokenGeneration}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      authService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      patientService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      doctorService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      appointmentService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      billingService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      labService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      prescriptionService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      pharmacyService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+      notificationService:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10000
+        failureRateThreshold: 50
+
+logging:
+  level:
+    com.myheart: ${LOG_LEVEL:INFO}
+    org.springframework.cloud.gateway: ${GATEWAY_LOG_LEVEL:INFO}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always

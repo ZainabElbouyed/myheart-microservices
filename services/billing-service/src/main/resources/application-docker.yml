@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: billing-service
+  
+  datasource:
+    url: jdbc:postgresql://postgres:5432/billingdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: myheart
+    password: myheart123
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+
+server:
+  port: 8085
+
+logging:
+  level:
+    com.myheart: INFO
+
+patient:
+  service:
+    url: http://patient-service:8082
+
+appointment:
+  service:
+    url: http://appointment-service:8084
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

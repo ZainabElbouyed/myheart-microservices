@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: patient-service
+  
+  datasource:
+    url: jdbc:postgresql://postgres:5432/patientdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+  
+  flyway:
+    enabled: false
+    baseline-on-migrate: true
+  
+  data:
+    mongodb:
+      uri: "mongodb://myheart:myheart123@mongodb:27017/labdb?authSource=admin"
+
+server:
+  port: 8082
+
+jwt:
+  secret: ${JWT_SECRET}
+
+doctor:
+  service:
+    url: http://doctor-service:8083
+
+logging:
+  level:
+    com.myheart: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"

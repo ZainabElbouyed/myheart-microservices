@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: patient-service
+  
+  cloud:
+    compatibility-verifier:
+      enabled: false
+      
+  datasource:
+    url: jdbc:postgresql://localhost:5432/patientdb
+    username: myheart
+    password: myheart123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+    show-sql: true
+  
+  flyway:
+    enabled: false
+    baseline-on-migrate: true
+
+
+  data:
+    mongodb:
+      uri: "mongodb://myheart:myheart123@mongodb:27017/labdb?authSource=admin"
+
+server:
+  port: 8082
+  compression:
+    enabled: true
+    mime-types: "application/json,application/xml,text/html,text/xml,text/plain"
+
+jwt:
+  secret: ${JWT_SECRET}
+
+doctor:
+  service:
+    url: http://localhost:8083
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.springframework.web: INFO
+    org.hibernate: ERROR
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics"
+  endpoint:
+    health:
+      show-details: always
+
+eureka:
+  client:
+    enabled: false

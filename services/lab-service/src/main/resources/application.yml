@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: lab-service
+  
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/labdb
+      auto-index-creation: true
+  
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: myheart
+    password: myheart123
+
+server:
+  port: 8086
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+jwt:
+  secret: ${JWT_SECRET}
+  
+
+patient:
+  service:
+    url: http://localhost:8082
+
+doctor:
+  service:
+    url: http://localhost:8083
+
+notification:
+  service:
+    url: http://localhost:8089
+
+logging:
+  level:
+    com.myheart: DEBUG
+    org.springframework.data.mongodb: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
