@@ -62,6 +62,8 @@ public class Patient {
     private String allergies;
     
     private String currentMedications;
+
+    private String primaryDoctorId;
     
     @Enumerated(EnumType.STRING)
     private Gender gender;

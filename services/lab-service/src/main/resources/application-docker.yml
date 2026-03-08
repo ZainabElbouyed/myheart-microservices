@@ -1,7 +1,8 @@
 spring:
   application:
     name: lab-service
-  
+  main:
+    allow-bean-definition-overriding: true 
   data:
     mongodb:
       uri: mongodb://myheart:myheart123@mongodb:27017/labdb?authSource=admin
@@ -17,6 +18,20 @@ spring:
     port: 5672
     username: myheart
     password: myheart123
+
+  cloud:
+    consul:
+      enabled: true
+      host: consul
+      port: 8500
+      discovery:
+        enabled: true
+        register: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${random.value} 
+
 
 server:
   port: 8086
@@ -41,8 +56,54 @@ logging:
   level:
     com.myheart: INFO
 
+resilience4j:
+  circuitbreaker:
+    instances:
+      patientService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      doctorService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      notificationService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+
+  timelimiter:
+    instances:
+      patientService:
+        timeoutDuration: 5s
+      doctorService:
+        timeoutDuration: 5s
+      notificationService:
+        timeoutDuration: 3s
+
+  retry:
+    instances:
+      patientService:
+        maxAttempts: 3
+        waitDuration: 1s
+      doctorService:
+        maxAttempts: 2
+        waitDuration: 500ms
+      notificationService:
+        maxAttempts: 2
+        waitDuration: 1s
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus,circuitbreakers

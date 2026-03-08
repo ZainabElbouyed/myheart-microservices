@@ -1,16 +1,21 @@
 package com.myheart.doctor.service;
 
+import com.myheart.doctor.client.*;
 import com.myheart.doctor.dto.DoctorRequestDTO;
 import com.myheart.doctor.dto.DoctorResponseDTO;
 import com.myheart.doctor.entity.Doctor;
 import com.myheart.doctor.exception.DoctorNotFoundException;
 import com.myheart.doctor.repository.DoctorRepository;
+import com.myheart.common.dto.*;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,6 +27,13 @@ public class DoctorService {
     
     private final DoctorRepository doctorRepository;
     
+    // ========== AJOUT DES CLIENTS FEIGN ==========
+    private final PatientServiceClient patientClient;
+    private final LabServiceClient labClient;
+    private final PrescriptionServiceClient prescriptionClient;
+    private final AppointmentServiceClient appointmentClient;
+    
+    // ========== MÉTHODES EXISTANTES (inchangées) ==========
     
     public DoctorResponseDTO createDoctor(DoctorRequestDTO request) {
         log.info("Creating new doctor with email: {}", request.getEmail());
@@ -196,6 +208,140 @@ public class DoctorService {
     public long getActiveDoctorCount() {
         return doctorRepository.countActiveDoctors();
     }
+    
+    // ========== NOUVELLES MÉTHODES AVEC CIRCUIT BREAKER ==========
+    
+    /**
+     * Récupère un patient par son ID (appel à patient-service)
+     */
+    @CircuitBreaker(name = "patientService", fallbackMethod = "getPatientFallback")
+    public PatientDTO getPatientById(String patientId) {
+        log.info("Appel à patient-service pour récupérer le patient: {}", patientId);
+        return patientClient.getPatientById(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatientById
+     */
+    public PatientDTO getPatientFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientById - patient-service indisponible: {}", e.getMessage());
+        return PatientDTO.builder()
+            .id(patientId)
+            .firstName("Patient")
+            .lastName("Indisponible")
+            .build();
+    }
+    
+    /**
+     * Récupère les résultats de laboratoire d'un patient (appel à lab-service)
+     */
+    @CircuitBreaker(name = "labService", fallbackMethod = "getLabResultsFallback")
+    public List<LabResultDTO> getPatientLabResults(String patientId) {
+        log.info("Appel à lab-service pour les résultats du patient: {}", patientId);
+        return labClient.getPatientLabResults(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatientLabResults
+     */
+    public List<LabResultDTO> getLabResultsFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientLabResults - lab-service indisponible: {}", e.getMessage());
+        return Collections.emptyList();
+    }
+    
+    /**
+     * Récupère les prescriptions d'un patient (appel à prescription-service)
+     */
+    @CircuitBreaker(name = "prescriptionService", fallbackMethod = "getPrescriptionsFallback")
+    public List<PrescriptionDTO> getPatientPrescriptions(String patientId) {
+        log.info("Appel à prescription-service pour les prescriptions du patient: {}", patientId);
+        return prescriptionClient.getPatientPrescriptions(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatientPrescriptions
+     */
+    public List<PrescriptionDTO> getPrescriptionsFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientPrescriptions - prescription-service indisponible: {}", e.getMessage());
+        return Collections.emptyList();
+    }
+    
+    /**
+     * Récupère les rendez-vous d'un docteur (appel à appointment-service)
+     */
+    @CircuitBreaker(name = "appointmentService", fallbackMethod = "getAppointmentsFallback")
+    public List<AppointmentDTO> getDoctorAppointments(String doctorId) {
+        log.info("Appel à appointment-service pour les rendez-vous du docteur: {}", doctorId);
+        return appointmentClient.getDoctorAppointments(doctorId);
+    }
+    
+    /**
+     * Fallback pour getDoctorAppointments
+     */
+    public List<AppointmentDTO> getAppointmentsFallback(String doctorId, Exception e) {
+        log.error("Fallback pour getDoctorAppointments - appointment-service indisponible: {}", e.getMessage());
+        return Collections.emptyList();
+    }
+    
+    /**
+     * Récupère les rendez-vous à venir d'un docteur
+     */
+    @CircuitBreaker(name = "appointmentService", fallbackMethod = "getUpcomingAppointmentsFallback")
+    public List<AppointmentDTO> getUpcomingAppointments(String doctorId) {
+        log.info("Appel à appointment-service pour les rendez-vous à venir du docteur: {}", doctorId);
+        return appointmentClient.getUpcomingAppointments(doctorId);
+    }
+    
+    /**
+     * Fallback pour getUpcomingAppointments
+     */
+    public List<AppointmentDTO> getUpcomingAppointmentsFallback(String doctorId, Exception e) {
+        log.error("Fallback pour getUpcomingAppointments - appointment-service indisponible: {}", e.getMessage());
+        return Collections.emptyList();
+    }
+    
+    /**
+     * Récupère les informations complètes d'un patient avec ses données médicales
+     * Combine plusieurs appels avec Circuit Breakers
+     */
+    public PatientMedicalDataDTO getPatientMedicalData(String patientId) {
+        log.info("Récupération des données médicales complètes pour le patient: {}", patientId);
+        
+        PatientDTO patient = getPatientById(patientId);
+        List<LabResultDTO> labResults = getPatientLabResults(patientId);
+        List<PrescriptionDTO> prescriptions = getPatientPrescriptions(patientId);
+        
+        return PatientMedicalDataDTO.builder()
+            .patient(patient)
+            .labResults(labResults)
+            .prescriptions(prescriptions)
+            .build();
+    }
+    
+    /**
+     * Vérifie si un docteur est disponible pour un créneau donné
+     */
+    public boolean isDoctorAvailable(String doctorId, LocalDateTime start, LocalDateTime end) {
+        log.info("Vérification disponibilité docteur {} de {} à {}", doctorId, start, end);
+        
+        // Récupérer le docteur
+        Doctor doctor = doctorRepository.findById(doctorId)
+                .orElseThrow(() -> new DoctorNotFoundException("Doctor not found with id: " + doctorId));
+        
+        // Vérifier si le docteur accepte de nouveaux patients
+        if (!doctor.getAcceptingNewPatients()) {
+            return false;
+        }
+        
+        // Vérifier les rendez-vous existants (à implémenter selon votre logique)
+        // Cette partie dépend de comment vous stockez les disponibilités
+        // Par exemple, si vous avez un repository de rendez-vous :
+        // return !appointmentRepository.existsOverlappingAppointment(doctorId, start, end);
+        
+        // Pour l'instant, on suppose que le docteur est disponible
+        return true;
+    }
+    // ========== MÉTHODES PRIVÉES EXISTANTES ==========
     
     private Doctor mapToEntity(DoctorRequestDTO dto) {
         Doctor doctor = new Doctor();

@@ -66,9 +66,9 @@ public class Invoice {
     private LocalDateTime updatedAt;
     
     private LocalDateTime paidAt;
-    
+
     public enum InvoiceStatus {
-        DRAFT, PENDING, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED, REFUNDED
+        DRAFT, PENDING, PENDING_RETRY, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED, REFUNDED
     }
     
     public void addPayment(Payment payment) {

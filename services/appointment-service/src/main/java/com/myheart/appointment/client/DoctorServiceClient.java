@@ -9,21 +9,27 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@FeignClient(name = "doctor-service", url = "${doctor.service.url:http://localhost:8083}")
+@FeignClient(
+    name = "doctor-service",
+    path = "/api/doctors",
+    contextId = "appointmentDoctorClient",
+    fallback = com.myheart.appointment.client.fallback.DoctorServiceFallback.class
+)
 public interface DoctorServiceClient {
     
-    @GetMapping("/api/doctors/{id}")
+    @GetMapping("/{id}")
     DoctorDTO getDoctorById(@PathVariable("id") String id);
     
-    @GetMapping("/api/doctors")
-    List<DoctorDTO> getAllDoctors();
-    
-    @GetMapping("/api/doctors/specialty/{specialty}")
+    @GetMapping("/by-specialty/{specialty}")
     List<DoctorDTO> getDoctorsBySpecialty(@PathVariable("specialty") String specialty);
     
-    @GetMapping("/api/doctors/{id}/check-availability")
+    @GetMapping("/all")
+    List<DoctorDTO> getAllDoctors();
+    
+    @GetMapping("/{id}/availability")
     Boolean checkAvailability(
-            @PathVariable("id") String id,
-            @RequestParam("start") LocalDateTime start,
-            @RequestParam("end") LocalDateTime end);
+        @PathVariable("id") String id,
+        @RequestParam("start") LocalDateTime start,
+        @RequestParam("end") LocalDateTime end
+    );
 }

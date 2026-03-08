@@ -1,7 +1,8 @@
 spring:
   application:
     name: doctor-service
-  
+  main:
+    allow-bean-definition-overriding: true 
   datasource:
     url: jdbc:postgresql://postgres:5432/patientdb
     username: myheart
@@ -23,6 +24,20 @@ spring:
     port: 5672
     username: myheart
     password: myheart123
+
+  cloud:
+    consul:
+      enabled: true
+      host: consul
+      port: 8500
+      discovery:
+        enabled: true
+        register: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${random.value} 
+
 
 server:
   port: 8083
@@ -52,8 +67,70 @@ logging:
   level:
     com.myheart: INFO
 
+resilience4j:
+  circuitbreaker:
+    instances:
+      appointmentService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      labService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      patientService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      prescriptionService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+
+  timelimiter:
+    instances:
+      appointmentService:
+        timeoutDuration: 5s
+      labService:
+        timeoutDuration: 5s
+      patientService:
+        timeoutDuration: 5s
+      prescriptionService:
+        timeoutDuration: 5s
+
+  retry:
+    instances:
+      appointmentService:
+        maxAttempts: 2
+        waitDuration: 1s
+      labService:
+        maxAttempts: 3
+        waitDuration: 1s
+      patientService:
+        maxAttempts: 2
+        waitDuration: 500ms
+      prescriptionService:
+        maxAttempts: 3
+        waitDuration: 1s
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus,circuitbreakers
+  endpoint:
+    health:
+      show-details: always

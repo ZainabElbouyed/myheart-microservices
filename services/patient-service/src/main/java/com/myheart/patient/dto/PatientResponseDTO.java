@@ -38,6 +38,7 @@ public class PatientResponseDTO {
     private Boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private String primaryDoctorId; 
     
     public static PatientResponseDTO fromEntity(Patient patient) {
         return PatientResponseDTO.builder()
@@ -68,6 +69,7 @@ public class PatientResponseDTO {
                 .active(patient.getActive())
                 .createdAt(patient.getCreatedAt())
                 .updatedAt(patient.getUpdatedAt())
+                .primaryDoctorId(patient.getPrimaryDoctorId())
                 .build();
     }
 }

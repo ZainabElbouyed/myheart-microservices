@@ -1,5 +1,7 @@
 package com.myheart.billing.service;
 
+import com.myheart.billing.client.PatientServiceClient;
+import com.myheart.billing.client.AppointmentServiceClient;
 import com.myheart.billing.dto.InvoiceRequestDTO;
 import com.myheart.billing.dto.InvoiceResponseDTO;
 import com.myheart.billing.dto.PaymentRequestDTO;
@@ -8,6 +10,10 @@ import com.myheart.billing.entity.Payment;
 import com.myheart.billing.exception.InvoiceNotFoundException;
 import com.myheart.billing.repository.InvoiceRepository;
 import com.myheart.billing.repository.PaymentRepository;
+import com.myheart.common.dto.AppointmentDTO;
+import com.myheart.common.dto.PatientDTO;
+import com.myheart.common.dto.InvoiceRequest;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +37,12 @@ public class BillingService {
     
     private final InvoiceRepository invoiceRepository;
     private final PaymentRepository paymentRepository;
+    
+    // ========== CLIENTS FEIGN AVEC CIRCUIT BREAKER ==========
+    private final PatientServiceClient patientClient;
+    private final AppointmentServiceClient appointmentClient;
+    
+    // ========== MÉTHODE PRINCIPALE EXISTANTE ==========
     
     public InvoiceResponseDTO createInvoice(InvoiceRequestDTO request) {
         log.info("Creating new invoice for patient: {}", request.getPatientId());
@@ -61,6 +73,145 @@ public class BillingService {
         
         return InvoiceResponseDTO.fromEntity(savedInvoice);
     }
+    
+    // ========== MÉTHODES AVEC CIRCUIT BREAKER POUR LES APPELS EXTERNES ==========
+    
+    /**
+     * Récupère les détails d'un rendez-vous pour facturation
+     */
+    @CircuitBreaker(name = "appointmentService", fallbackMethod = "getAppointmentFallback")
+    public AppointmentDTO getAppointmentDetails(String appointmentId) {
+        log.info("Appel à appointment-service pour récupérer les détails du rendez-vous: {}", appointmentId);
+        return appointmentClient.getAppointmentById(appointmentId);
+    }
+    
+    /**
+     * Fallback pour getAppointmentDetails
+     */
+    public AppointmentDTO getAppointmentFallback(String appointmentId, Exception e) {
+        log.error("Fallback pour getAppointmentDetails - appointment-service indisponible: {}", e.getMessage());
+        return AppointmentDTO.builder()
+            .id(appointmentId)
+            .patientId("INCONNU")
+            .doctorId("INCONNU")
+            .status("UNKNOWN")
+            .build();
+    }
+    
+    /**
+     * Récupère les détails d'un patient pour facturation
+     */
+    @CircuitBreaker(name = "patientService", fallbackMethod = "getPatientFallback")
+    public PatientDTO getPatientDetails(String patientId) {
+        log.info("Appel à patient-service pour récupérer les détails du patient: {}", patientId);
+        return patientClient.getPatientById(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatientDetails
+     */
+    public PatientDTO getPatientFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientDetails - patient-service indisponible: {}", e.getMessage());
+        return PatientDTO.builder()
+            .id(patientId)
+            .firstName("Patient")
+            .lastName("Indisponible")
+            .email("inconnu@fallback.com")
+            .build();
+    }
+    
+    /**
+     * Crée une facture à partir d'un rendez-vous (méthode unifiée)
+     * Note: InvoiceRequest utilise des Double, donc conversion en BigDecimal nécessaire
+     */
+    @CircuitBreaker(name = "appointmentService", fallbackMethod = "createInvoiceFromAppointmentFallback")
+    public InvoiceResponseDTO createInvoiceFromAppointment(InvoiceRequest request) {
+        log.info("Création facture pour appointment: {}", request.getAppointmentId());
+        
+        // Récupérer les détails du rendez-vous
+        AppointmentDTO appointment = appointmentClient.getAppointmentById(request.getAppointmentId());
+        
+        // Récupérer les détails du patient
+        PatientDTO patient = patientClient.getPatientById(appointment.getPatientId());
+        
+        // Créer la facture
+        Invoice invoice = new Invoice();
+        invoice.setAppointmentId(appointment.getId());
+        invoice.setPatientId(patient.getId());
+        invoice.setPatientName(patient.getFirstName() + " " + patient.getLastName());
+        
+        // ✅ CORRECTION: Convertir Double en BigDecimal
+        Double subtotalDouble = request.getSubtotal();
+        BigDecimal subtotal = subtotalDouble != null ? 
+            BigDecimal.valueOf(subtotalDouble) : BigDecimal.valueOf(50.0);
+        invoice.setSubtotal(subtotal);
+        
+        Double taxRateDouble = request.getTaxRate();
+        BigDecimal taxRate = taxRateDouble != null ? 
+            BigDecimal.valueOf(taxRateDouble) : BigDecimal.valueOf(20.0);
+        invoice.setTaxRate(taxRate);
+        
+        // Calculer taxes et total
+        BigDecimal taxAmount = invoice.getSubtotal()
+                .multiply(invoice.getTaxRate())
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        invoice.setTaxAmount(taxAmount);
+        invoice.setTotal(invoice.getSubtotal().add(taxAmount));
+        
+        invoice.setInvoiceNumber(generateInvoiceNumber());
+        invoice.setDescription(request.getDescription() != null ? request.getDescription() : 
+                "Consultation médicale");
+        invoice.setDueDate(LocalDateTime.now().plusDays(30));
+        invoice.setIssuedDate(LocalDateTime.now());
+        invoice.setStatus(Invoice.InvoiceStatus.PENDING);
+        
+        Invoice savedInvoice = invoiceRepository.save(invoice);
+        log.info("Facture créée avec succès: {}", savedInvoice.getInvoiceNumber());
+        
+        return InvoiceResponseDTO.fromEntity(savedInvoice);
+    }
+    
+    /**
+     * Fallback pour createInvoiceFromAppointment
+     */
+    public InvoiceResponseDTO createInvoiceFromAppointmentFallback(InvoiceRequest request, Exception e) {
+        log.error("Fallback pour createInvoiceFromAppointment - service(s) indisponible(s): {}", e.getMessage());
+        
+        Invoice invoice = new Invoice();
+        invoice.setAppointmentId(request.getAppointmentId());
+        invoice.setPatientId("INCONNU");
+        invoice.setPatientName("Patient Indisponible");
+        
+        // ✅ CORRECTION: Même conversion Double → BigDecimal
+        Double subtotalDouble = request.getSubtotal();
+        BigDecimal subtotal = subtotalDouble != null ? 
+            BigDecimal.valueOf(subtotalDouble) : BigDecimal.valueOf(50.0);
+        invoice.setSubtotal(subtotal);
+        
+        Double taxRateDouble = request.getTaxRate();
+        BigDecimal taxRate = taxRateDouble != null ? 
+            BigDecimal.valueOf(taxRateDouble) : BigDecimal.valueOf(20.0);
+        invoice.setTaxRate(taxRate);
+        
+        BigDecimal taxAmount = invoice.getSubtotal()
+                .multiply(invoice.getTaxRate())
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        invoice.setTaxAmount(taxAmount);
+        invoice.setTotal(invoice.getSubtotal().add(taxAmount));
+        
+        invoice.setInvoiceNumber(generateInvoiceNumber());
+        invoice.setDescription(request.getDescription() != null ? request.getDescription() : 
+                "Consultation (mode dégradé)");
+        invoice.setDueDate(LocalDateTime.now().plusDays(30));
+        invoice.setIssuedDate(LocalDateTime.now());
+        invoice.setStatus(Invoice.InvoiceStatus.PENDING);
+        invoice.setNotes("Créé en mode dégradé - informations patient non vérifiées");
+        
+        Invoice savedInvoice = invoiceRepository.save(invoice);
+        return InvoiceResponseDTO.fromEntity(savedInvoice);
+    }
+    
+    // ========== MÉTHODES EXISTANTES ==========
     
     public InvoiceResponseDTO getInvoiceById(String id) {
         Invoice invoice = invoiceRepository.findById(id)
@@ -95,7 +246,6 @@ public class BillingService {
                 .collect(Collectors.toList());
     }
     
-
     public InvoiceResponseDTO payInvoice(String id, String method) {
         log.info("💰 Processing payment for invoice: {} with method: {}", id, method);
         
@@ -190,21 +340,6 @@ public class BillingService {
         return stats;
     }
     
-    private String generateInvoiceNumber() {
-        String prefix = "INV";
-        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        String uniquePart = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        String invoiceNumber = prefix + "-" + datePart + "-" + uniquePart;
-        
-        // Vérifier l'unicité
-        while (invoiceRepository.existsByInvoiceNumber(invoiceNumber)) {
-            uniquePart = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-            invoiceNumber = prefix + "-" + datePart + "-" + uniquePart;
-        }
-        
-        return invoiceNumber;
-    }
-
     public InvoiceResponseDTO processPayment(String invoiceId, PaymentRequestDTO request) {
         log.info("Processing payment for invoice: {} with method: {}", invoiceId, request.getPaymentMethod());
         
@@ -247,5 +382,20 @@ public class BillingService {
         log.info("Payment processed successfully. New status: {}", updatedInvoice.getStatus());
         
         return InvoiceResponseDTO.fromEntity(updatedInvoice);
+    }
+    
+    private String generateInvoiceNumber() {
+        String prefix = "INV";
+        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String uniquePart = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String invoiceNumber = prefix + "-" + datePart + "-" + uniquePart;
+        
+        // Vérifier l'unicité
+        while (invoiceRepository.existsByInvoiceNumber(invoiceNumber)) {
+            uniquePart = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            invoiceNumber = prefix + "-" + datePart + "-" + uniquePart;
+        }
+        
+        return invoiceNumber;
     }
 }

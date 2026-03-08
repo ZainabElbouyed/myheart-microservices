@@ -1,7 +1,21 @@
 spring:
   application:
     name: patient-service
-  
+  main:
+    allow-bean-definition-overriding: true   
+  cloud:
+    consul:
+      enabled: true
+      host: consul
+      port: 8500
+      discovery:
+        enabled: true
+        register: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${random.value} 
+
   datasource:
     url: jdbc:postgresql://postgres:5432/patientdb
     username: myheart
@@ -17,6 +31,8 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
     show-sql: false
+
+                                                                                                                                 
   
   flyway:
     enabled: false
@@ -40,8 +56,36 @@ logging:
   level:
     com.myheart: INFO
 
+resilience4j:
+  circuitbreaker:
+    instances:
+      doctorService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+
+  timelimiter:
+    instances:
+      doctorService:
+        timeoutDuration: 5s
+
+  retry:
+    instances:
+      doctorService:
+        maxAttempts: 3
+        waitDuration: 1s
+        retryExceptions:
+          - org.springframework.web.client.HttpServerErrorException
+
 management:
   endpoints:
     web:
       exposure:
-        include: "health,info"
+        include: health,info,metrics,prometheus,circuitbreakers
+  endpoint:
+    health:
+      show-details: always

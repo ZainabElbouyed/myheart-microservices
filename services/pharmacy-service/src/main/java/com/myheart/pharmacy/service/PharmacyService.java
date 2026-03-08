@@ -1,5 +1,6 @@
 package com.myheart.pharmacy.service;
 
+import com.myheart.pharmacy.client.PrescriptionServiceClient;
 import com.myheart.pharmacy.dto.MedicineRequestDTO;
 import com.myheart.pharmacy.dto.MedicineResponseDTO;
 import com.myheart.pharmacy.dto.TransactionRequestDTO;
@@ -9,6 +10,8 @@ import com.myheart.pharmacy.exception.InsufficientStockException;
 import com.myheart.pharmacy.exception.MedicineNotFoundException;
 import com.myheart.pharmacy.repository.InventoryTransactionRepository;
 import com.myheart.pharmacy.repository.MedicineRepository;
+import com.myheart.common.dto.PrescriptionDTO;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,7 +34,125 @@ public class PharmacyService {
     private final MedicineRepository medicineRepository;
     private final InventoryTransactionRepository transactionRepository;
     
-    // ============ GESTION DES MÉDICAMENTS ============
+    // ========== CLIENT FEIGN AVEC CIRCUIT BREAKER ==========
+    private final PrescriptionServiceClient prescriptionClient;
+    
+    // ========== MÉTHODES AVEC CIRCUIT BREAKER ==========
+    
+    /**
+     * Récupère une prescription par son ID
+     */
+    @CircuitBreaker(name = "prescriptionService", fallbackMethod = "getPrescriptionFallback")
+    public PrescriptionDTO getPrescription(String prescriptionId) {
+        log.info("Appel à prescription-service pour récupérer la prescription: {}", prescriptionId);
+        return prescriptionClient.getPrescriptionById(prescriptionId);
+    }
+    
+    /**
+     * Fallback pour getPrescription
+     */
+    public PrescriptionDTO getPrescriptionFallback(String prescriptionId, Exception e) {
+        log.error("Fallback pour getPrescription - prescription-service indisponible: {}", e.getMessage());
+        return PrescriptionDTO.builder()
+            .id(prescriptionId)
+            .prescriptionNumber("UNKNOWN")
+            .patientId("INCONNU")
+            .doctorId("INCONNU")
+            .status("UNKNOWN")
+            .build();
+    }
+    
+    /**
+     * Récupère toutes les prescriptions d'un patient
+     */
+    @CircuitBreaker(name = "prescriptionService", fallbackMethod = "getPatientPrescriptionsFallback")
+    public List<PrescriptionDTO> getPatientPrescriptions(String patientId) {
+        log.info("Appel à prescription-service pour les prescriptions du patient: {}", patientId);
+        return prescriptionClient.getPatientPrescriptions(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatientPrescriptions
+     */
+    public List<PrescriptionDTO> getPatientPrescriptionsFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientPrescriptions - prescription-service indisponible: {}", e.getMessage());
+        return List.of(); // Retourne une liste vide
+    }
+    
+    /**
+     * Vérifie si une prescription est valide
+     */
+    public boolean verifyPrescription(String prescriptionId) {
+        try {
+            log.info("Vérification de la prescription: {}", prescriptionId);
+            PrescriptionDTO prescription = getPrescription(prescriptionId);
+            
+            if (prescription == null) {
+                return false;
+            }
+            
+            // Vérifier le statut de la prescription
+            boolean isValid = "VALID".equals(prescription.getStatus()) || 
+                              "ACTIVE".equals(prescription.getStatus());
+            
+            log.info("Prescription {} est valide? {}", prescriptionId, isValid);
+            return isValid;
+            
+        } catch (Exception e) {
+            log.error("Erreur lors de la vérification de la prescription {}: {}", prescriptionId, e.getMessage());
+            return false; // En cas d'erreur, on considère que la prescription n'est pas valide
+        }
+    }
+    
+    // ========== MÉTHODE DE DISPENSATION MODIFIÉE ==========
+    
+    @Transactional
+    public MedicineResponseDTO dispenseMedicine(String id, int quantity, String patientId, String doctorId, String prescriptionId) {
+        log.info("Dispensing medicine {} for patient: {} with prescription: {}", id, patientId, prescriptionId);
+        
+        // Vérifier la prescription si fournie
+        if (prescriptionId != null && !prescriptionId.isEmpty()) {
+            if (!verifyPrescription(prescriptionId)) {
+                log.warn("Prescription {} n'est pas valide, mais on continue quand même en mode dégradé", prescriptionId);
+                // On pourrait lever une exception ici si on veut bloquer
+                // throw new InvalidPrescriptionException("Prescription not valid: " + prescriptionId);
+            }
+        }
+        
+        Medicine medicine = medicineRepository.findById(id)
+                .orElseThrow(() -> new MedicineNotFoundException("Medicine not found with id: " + id));
+        
+        if (medicine.getStockQuantity() < quantity) {
+            throw new InsufficientStockException("Insufficient stock for " + medicine.getName() + 
+                    ". Available: " + medicine.getStockQuantity() + ", Requested: " + quantity);
+        }
+        
+        int previousStock = medicine.getStockQuantity();
+        medicine.reduceStock(quantity);
+        
+        // Créer une transaction de vente
+        InventoryTransaction transaction = new InventoryTransaction();
+        transaction.setMedicine(medicine);
+        transaction.setType(InventoryTransaction.TransactionType.SALE);
+        transaction.setQuantity(quantity);
+        transaction.setPreviousStock(previousStock);
+        transaction.setNewStock(medicine.getStockQuantity());
+        transaction.setPatientId(patientId);
+        transaction.setDoctorId(doctorId);
+        transaction.setPrescriptionId(prescriptionId);
+        transaction.setUnitPrice(medicine.getSellingPrice() != null ? medicine.getSellingPrice() : medicine.getUnitPrice());
+        transaction.setTotalAmount(transaction.getUnitPrice().multiply(BigDecimal.valueOf(quantity)));
+        transaction.setCreatedBy("PHARMACIST");
+        
+        transactionRepository.save(transaction);
+        
+        Medicine updatedMedicine = medicineRepository.save(medicine);
+        log.info("Dispensed {} units of {} for patient: {}", quantity, medicine.getName(), patientId);
+        
+        return MedicineResponseDTO.fromEntity(updatedMedicine);
+    }
+    
+    // ========== GESTION DES MÉDICAMENTS ==========
     
     public MedicineResponseDTO createMedicine(MedicineRequestDTO request) {
         log.info("Creating new medicine: {}", request.getName());
@@ -163,41 +284,6 @@ public class PharmacyService {
         
         Medicine updatedMedicine = medicineRepository.save(medicine);
         log.info("Added {} units to medicine: {}. New stock: {}", quantity, medicine.getName(), medicine.getStockQuantity());
-        
-        return MedicineResponseDTO.fromEntity(updatedMedicine);
-    }
-    
-    @Transactional
-    public MedicineResponseDTO dispenseMedicine(String id, int quantity, String patientId, String doctorId, String prescriptionId) {
-        Medicine medicine = medicineRepository.findById(id)
-                .orElseThrow(() -> new MedicineNotFoundException("Medicine not found with id: " + id));
-        
-        if (medicine.getStockQuantity() < quantity) {
-            throw new InsufficientStockException("Insufficient stock for " + medicine.getName() + 
-                    ". Available: " + medicine.getStockQuantity() + ", Requested: " + quantity);
-        }
-        
-        int previousStock = medicine.getStockQuantity();
-        medicine.reduceStock(quantity);
-        
-        // Créer une transaction de vente
-        InventoryTransaction transaction = new InventoryTransaction();
-        transaction.setMedicine(medicine);
-        transaction.setType(InventoryTransaction.TransactionType.SALE);
-        transaction.setQuantity(quantity);
-        transaction.setPreviousStock(previousStock);
-        transaction.setNewStock(medicine.getStockQuantity());
-        transaction.setPatientId(patientId);
-        transaction.setDoctorId(doctorId);
-        transaction.setPrescriptionId(prescriptionId);
-        transaction.setUnitPrice(medicine.getSellingPrice() != null ? medicine.getSellingPrice() : medicine.getUnitPrice());
-        transaction.setTotalAmount(transaction.getUnitPrice().multiply(BigDecimal.valueOf(quantity)));
-        transaction.setCreatedBy("PHARMACIST");
-        
-        transactionRepository.save(transaction);
-        
-        Medicine updatedMedicine = medicineRepository.save(medicine);
-        log.info("Dispensed {} units of {} for patient: {}", quantity, medicine.getName(), patientId);
         
         return MedicineResponseDTO.fromEntity(updatedMedicine);
     }

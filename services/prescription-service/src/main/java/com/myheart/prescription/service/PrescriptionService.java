@@ -1,14 +1,23 @@
 package com.myheart.prescription.service;
 
+import com.myheart.prescription.client.PatientServiceClient;
+import com.myheart.prescription.client.DoctorServiceClient;
+import com.myheart.prescription.client.PharmacyServiceClient;
 import com.myheart.prescription.dto.PrescriptionRequestDTO;
 import com.myheart.prescription.dto.PrescriptionResponseDTO;
 import com.myheart.prescription.entity.Prescription;
 import com.myheart.prescription.exception.PrescriptionNotFoundException;
 import com.myheart.prescription.repository.PrescriptionRepository;
+import com.myheart.common.dto.PatientDTO;
+import com.myheart.common.dto.DoctorDTO;
+import com.myheart.common.dto.PharmacyDTO;
+import com.myheart.common.dto.StockRequest;
+import com.myheart.common.dto.DispenseRequest;
+import com.myheart.prescription.dto.MedicationDTO;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import com.myheart.prescription.dto.MedicationDTO;  
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -26,8 +35,110 @@ public class PrescriptionService {
     
     private final PrescriptionRepository prescriptionRepository;
     
+    // ========== CLIENTS FEIGN AVEC CIRCUIT BREAKER ==========
+    private final PatientServiceClient patientClient;
+    private final DoctorServiceClient doctorClient;
+    private final PharmacyServiceClient pharmacyClient;
+    
+    // ========== MÉTHODES AVEC CIRCUIT BREAKER ==========
+    
+    /**
+     * Récupère les informations d'un patient
+     */
+    @CircuitBreaker(name = "patientService", fallbackMethod = "getPatientFallback")
+    public PatientDTO getPatient(String patientId) {
+        log.info("Appel à patient-service pour récupérer le patient: {}", patientId);
+        return patientClient.getPatientById(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatient
+     */
+    public PatientDTO getPatientFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatient - patient-service indisponible: {}", e.getMessage());
+        return PatientDTO.builder()
+            .id(patientId)
+            .firstName("Patient")
+            .lastName("Inconnu")
+            .email("inconnu@fallback.com")
+            .build();
+    }
+    
+    /**
+     * Récupère les informations d'un médecin
+     */
+    @CircuitBreaker(name = "doctorService", fallbackMethod = "getDoctorFallback")
+    public DoctorDTO getDoctor(String doctorId) {
+        log.info("Appel à doctor-service pour récupérer le médecin: {}", doctorId);
+        return doctorClient.getDoctorById(doctorId);
+    }
+    
+    /**
+     * Fallback pour getDoctor
+     */
+    public DoctorDTO getDoctorFallback(String doctorId, Exception e) {
+        log.error("Fallback pour getDoctor - doctor-service indisponible: {}", e.getMessage());
+        return DoctorDTO.builder()
+            .id(doctorId)
+            .firstName("Médecin")
+            .lastName("Non disponible")
+            .specialty("Non spécifiée")
+            .build();
+    }
+    
+    /**
+     * Vérifie le stock et dispense un médicament
+     */
+    @CircuitBreaker(name = "pharmacyService", fallbackMethod = "dispenseFallback")
+    public PharmacyDTO dispensePrescription(DispenseRequest request) {
+        log.info("Vérification du stock pour le médicament: {}", request.getMedicationId());
+        
+        StockRequest stockRequest = new StockRequest();
+        stockRequest.setMedicationId(request.getMedicationId());
+        stockRequest.setQuantity(request.getQuantity());
+        
+        Boolean stockAvailable = pharmacyClient.checkStock(stockRequest);
+        
+        if (!stockAvailable) {
+            throw new RuntimeException("Stock insuffisant pour le médicament: " + request.getMedicationId());
+        }
+        
+        log.info("Stock disponible, dispensation du médicament");
+        return pharmacyClient.dispenseMedication(request);
+    }
+    
+    /**
+     * Fallback pour dispensePrescription
+     */
+    public PharmacyDTO dispenseFallback(DispenseRequest request, Exception e) {
+        log.error("Fallback pour dispensePrescription - pharmacy-service indisponible: {}", e.getMessage());
+        return PharmacyDTO.builder()
+            .id("FALLBACK-" + System.currentTimeMillis())
+            .name("Pharmacie indisponible")
+            .status("PENDING")
+            .warning("Dispensation en attente - pharmacie temporairement indisponible")
+            .build();
+    }
+    
+    // ========== MÉTHODE DE CRÉATION MODIFIÉE ==========
+    
     public PrescriptionResponseDTO createPrescription(PrescriptionRequestDTO request) {
         log.info("Creating new prescription for patient: {}", request.getPatientId());
+        
+        // Vérifier les informations du patient et du médecin si disponibles
+        try {
+            if (request.getPatientId() != null) {
+                PatientDTO patient = getPatient(request.getPatientId());
+                log.debug("Patient trouvé: {}", patient.getFirstName() + " " + patient.getLastName());
+            }
+            
+            if (request.getDoctorId() != null) {
+                DoctorDTO doctor = getDoctor(request.getDoctorId());
+                log.debug("Médecin trouvé: {}", doctor.getFirstName() + " " + doctor.getLastName());
+            }
+        } catch (Exception e) {
+            log.warn("Impossible de vérifier les informations patient/médecin, mais création continue: {}", e.getMessage());
+        }
         
         Prescription prescription = new Prescription();
         prescription.setPrescriptionNumber(generatePrescriptionNumber());
@@ -42,12 +153,14 @@ public class PrescriptionService {
         prescription.setExpiryDate(calculateExpiryDate(request.getPrescriptionDate()));
         prescription.setDiagnosis(request.getDiagnosis());
         prescription.setClinicalNotes(request.getClinicalNotes());
+        
         if (request.getMedications() != null) {
             List<Prescription.Medication> medications = request.getMedications().stream()
                     .map(this::convertToEntityMedication)
                     .collect(Collectors.toList());
             prescription.setMedications(medications);
         }
+        
         prescription.setRefillsAllowed(request.getRefillsAllowed() != null ? 
                 request.getRefillsAllowed() : 0);
         prescription.setRefillsUsed(0);
@@ -72,6 +185,8 @@ public class PrescriptionService {
         
         return PrescriptionResponseDTO.fromEntity(savedPrescription);
     }
+    
+    // ========== MÉTHODES EXISTANTES ==========
     
     public PrescriptionResponseDTO getPrescriptionById(String id) {
         Prescription prescription = prescriptionRepository.findById(id)
@@ -191,6 +306,7 @@ public class PrescriptionService {
         switch (status) {
             case FILLED:
             case PARTIALLY_FILLED:
+            case REFILLED:
                 prescription.setFilledAt(LocalDateTime.now());
                 break;
             case CANCELLED:
@@ -198,6 +314,15 @@ public class PrescriptionService {
                 break;
             case EXPIRED:
                 // Logique pour marquer comme expiré
+                break;
+            case ACTIVE:
+                // Rien à faire
+                break;
+            case DRAFT:
+                // Rien à faire
+                break;
+            default:
+                // Autres cas
                 break;
         }
         
@@ -315,6 +440,4 @@ public class PrescriptionService {
         // Les prescriptions sont valables 1 an par défaut
         return prescriptionDate.plusYears(1);
     }
-
-    
 }

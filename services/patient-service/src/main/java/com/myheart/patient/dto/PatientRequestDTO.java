@@ -53,4 +53,5 @@ public class PatientRequestDTO {
     private Patient.MaritalStatus maritalStatus;
     
     private String occupation;
+    private String primaryDoctorId;
 }

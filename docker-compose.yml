@@ -10,6 +10,7 @@ volumes:
   mongodb-data:
   redis-data:
   rabbitmq-data:
+  consul-data: 
 
 services:
   # ============ POSTGRESQL (pour auth, patient, appointment, billing) ============
@@ -111,6 +112,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ============ CONSUL ============
+  consul:
+    image: consul:1.15
+    container_name: myheart-consul
+    ports:
+      - "8500:8500"  # Interface web
+      - "8600:8600/udp"  # DNS
+    command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0 -bind=0.0.0.0
+    volumes:
+      - consul-data:/consul/data
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ============ MICROSERVICES ============
   
@@ -280,14 +299,22 @@ services:
     ports:
       - "8089:8089"
     environment:
-      NODE_ENV: production
-      PORT: 8089
-      SPRING_DATA_MONGODB_URI: mongodb://myheart:myheart123@mongodb:27017/notifications?authSource=admin
-      RABBITMQ_URL: amqp://myheart:myheart123@rabbitmq:5672
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_CONSUL_HOST=consul
+      - SPRING_CLOUD_CONSUL_PORT=8500
+      - SPRING_CLOUD_CONSUL_ENABLED=true
+      - SPRING_CLOUD_CONSUL_DISCOVERY_ENABLED=true
+      - SPRING_CLOUD_CONSUL_DISCOVERY_REGISTER=true
+      - SPRING_DATA_MONGODB_URI=mongodb://myheart:myheart123@mongodb:27017/notifications?authSource=admin
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=myheart
+      - RABBITMQ_PASSWORD=myheart123
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - JWT_SECRET=${JWT_SECRET:-myheartSecretKey2024ForJWTTokenGeneration}
     depends_on:
       mongodb:
         condition: service_healthy

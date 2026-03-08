@@ -1,22 +1,33 @@
 package com.myheart.patient.service;
 
+import com.myheart.patient.client.DoctorServiceClient;
 import com.myheart.patient.dto.PatientRequestDTO;
 import com.myheart.patient.dto.PatientResponseDTO;
 import com.myheart.patient.entity.Patient;
 import com.myheart.patient.repository.PatientRepository;
+import com.myheart.common.dto.DoctorDTO;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class PatientService {
     
     private final PatientRepository patientRepository;
+    
+    // AJOUT: Injection du client Feign pour doctor-service
+    private final DoctorServiceClient doctorClient;
+    
+    // ========== MÉTHODES EXISTANTES (inchangées) ==========
     
     public PatientResponseDTO createPatient(PatientRequestDTO request) {
         // Vérifier si l'email existe déjà
@@ -95,6 +106,80 @@ public class PatientService {
         return patientRepository.countActivePatients();
     }
     
+    // ========== NOUVELLES MÉTHODES AVEC CIRCUIT BREAKER ==========
+    
+    /**
+     * Récupère la liste des médecins associés à un patient
+     * Avec protection Circuit Breaker
+     */
+    @CircuitBreaker(name = "doctorService", fallbackMethod = "getDoctorsFallback")
+    public List<DoctorDTO> getPatientDoctors(String patientId) {
+        log.info("Appel à doctor-service pour récupérer les médecins du patient: {}", patientId);
+        return doctorClient.getDoctorsByPatient(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatientDoctors - retourne une liste vide
+     */
+    public List<DoctorDTO> getDoctorsFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientDoctors - patient-service indisponible: {}", e.getMessage());
+        return Collections.emptyList();
+    }
+    
+    /**
+     * Récupère les informations d'un médecin par son ID
+     * Avec protection Circuit Breaker
+     */
+    @CircuitBreaker(name = "doctorService", fallbackMethod = "getDoctorFallback")
+    public DoctorDTO getDoctorById(String doctorId) {
+        log.info("Appel à doctor-service pour récupérer le médecin: {}", doctorId);
+        return doctorClient.getDoctorById(doctorId);
+    }
+    
+    /**
+     * Fallback pour getDoctorById - retourne un médecin par défaut
+     */
+    public DoctorDTO getDoctorFallback(String doctorId, Exception e) {
+        log.error("Fallback pour getDoctorById - doctor-service indisponible: {}", e.getMessage());
+        return DoctorDTO.builder()
+            .id(doctorId)
+            .firstName("Médecin")
+            .lastName("Indisponible")
+            .specialty("Non spécifiée")
+            .acceptingNewPatients(false)
+            .build();
+    }
+    
+    /**
+     * Récupère le médecin principal du patient
+     * Utilise le circuit breaker pour la résilience
+     */
+    @CircuitBreaker(name = "doctorService", fallbackMethod = "getPrimaryDoctorFallback")
+    public DoctorDTO getPatientPrimaryDoctor(String patientId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found with id: " + patientId));
+        
+        if (patient.getPrimaryDoctorId() != null) {
+            log.info("Récupération du médecin principal pour le patient: {}", patientId);
+            return doctorClient.getDoctorById(patient.getPrimaryDoctorId());
+        }
+        return null;
+    }
+    
+    /**
+     * Fallback pour getPatientPrimaryDoctor
+     */
+    public DoctorDTO getPrimaryDoctorFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatientPrimaryDoctor - service indisponible: {}", e.getMessage());
+        return DoctorDTO.builder()
+            .id("FALLBACK")
+            .firstName("Médecin")
+            .lastName("Non disponible")
+            .build();
+    }
+    
+    // ========== MÉTHODES PRIVÉES EXISTANTES (inchangées) ==========
+    
     private Patient mapToEntity(PatientRequestDTO dto) {
         Patient patient = new Patient();
         updateEntity(patient, dto);
@@ -124,5 +209,9 @@ public class PatientService {
         patient.setGender(dto.getGender());
         patient.setMaritalStatus(dto.getMaritalStatus());
         patient.setOccupation(dto.getOccupation());
+
+        if (dto.getPrimaryDoctorId() != null) {
+            patient.setPrimaryDoctorId(dto.getPrimaryDoctorId());
+        }
     }
 }

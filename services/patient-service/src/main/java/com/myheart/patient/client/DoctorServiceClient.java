@@ -1,4 +1,3 @@
-// services/patient-service/src/main/java/com/myheart/patient/client/DoctorServiceClient.java
 package com.myheart.patient.client;
 
 import com.myheart.common.dto.DoctorDTO;
@@ -9,15 +8,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
-@FeignClient(name = "doctor-service", url = "${doctor.service.url:http://localhost:8083}")
+@FeignClient(
+    name = "doctor-service",
+    path = "/api/doctors",
+    contextId = "patientDoctorClient",
+    fallback = com.myheart.patient.client.fallback.DoctorServiceFallback.class
+)
 public interface DoctorServiceClient {
     
-    @GetMapping("/api/doctors")
-    List<DoctorDTO> getAllDoctors();
-    
-    @GetMapping("/api/doctors/{id}")
+    @GetMapping("/{id}")
     DoctorDTO getDoctorById(@PathVariable("id") String id);
     
-    @GetMapping("/api/doctors/specialty/{specialty}")
-    List<DoctorDTO> getDoctorsBySpecialty(@PathVariable("specialty") String specialty);
+    @GetMapping("/by-patient/{patientId}")
+    List<DoctorDTO> getDoctorsByPatient(@PathVariable("patientId") String patientId);
 }

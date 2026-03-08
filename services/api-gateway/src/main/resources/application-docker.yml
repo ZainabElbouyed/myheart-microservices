@@ -1,7 +1,8 @@
 spring:
   application:
     name: api-gateway
-  
+  main:
+    allow-bean-definition-overriding: true 
   data:
     redis:
       host: ${REDIS_HOST:redis}
@@ -130,7 +131,17 @@ spring:
             allowedHeaders: "*"
             allowCredentials: true
             maxAge: 3600
-
+    consul:
+      enabled: true
+      host: consul
+      port: 8500
+      discovery:
+        enabled: true
+        register: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${random.value}
 server:
   port: ${SERVER_PORT:8080}
   compression:

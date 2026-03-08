@@ -7,17 +7,21 @@ import com.myheart.doctor.entity.Doctor;
 import com.myheart.doctor.service.DoctorService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/doctors")
 @RequiredArgsConstructor
+@Slf4j
 public class DoctorController {
     
     private final DoctorService doctorService;
@@ -144,6 +148,16 @@ public class DoctorController {
         ));
     }
     
+    @GetMapping("/{id}/availability")
+    public ResponseEntity<Boolean> checkAvailability(
+            @PathVariable String id,
+            @RequestParam LocalDateTime start,
+            @RequestParam LocalDateTime end) {
+        
+        log.info("Checking availability for doctor {} from {} to {}", id, start, end);
+        boolean available = doctorService.isDoctorAvailable(id, start, end);
+        return ResponseEntity.ok(available);
+    }
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("Doctor service is running");

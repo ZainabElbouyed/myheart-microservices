@@ -1,7 +1,8 @@
 spring:
   application:
     name: auth-service
-  
+  main:
+    allow-bean-definition-overriding: true 
   datasource:
     url: jdbc:postgresql://postgres:5432/authdb
     username: myheart
@@ -17,7 +18,19 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
     show-sql: false
-
+  
+  cloud:
+    consul:
+      enabled: true
+      host: consul
+      port: 8500
+      discovery:
+        enabled: true
+        register: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${random.value} 
 server:
   port: 8081
 
@@ -34,4 +47,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always

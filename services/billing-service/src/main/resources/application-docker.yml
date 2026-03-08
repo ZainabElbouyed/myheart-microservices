@@ -1,7 +1,8 @@
 spring:
   application:
     name: billing-service
-  
+  main:
+    allow-bean-definition-overriding: true 
   datasource:
     url: jdbc:postgresql://postgres:5432/billingdb
     username: myheart
@@ -23,6 +24,19 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
     show-sql: false
+  
+  cloud:
+    consul:
+      enabled: true
+      host: consul
+      port: 8500
+      discovery:
+        enabled: true
+        register: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${random.value} 
 
 server:
   port: 8085
@@ -39,8 +53,45 @@ appointment:
   service:
     url: http://appointment-service:8084
 
+# billing-service - À AJOUTER
+resilience4j:
+  circuitbreaker:
+    instances:
+      patientService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      appointmentService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+
+  timelimiter:
+    instances:
+      patientService:
+        timeoutDuration: 5s
+      appointmentService:
+        timeoutDuration: 5s
+
+  retry:
+    instances:
+      patientService:
+        maxAttempts: 3
+        waitDuration: 1s
+        retryExceptions:
+          - org.springframework.web.client.HttpServerErrorException
+      appointmentService:
+        maxAttempts: 3
+        waitDuration: 1s
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus,circuitbreakers

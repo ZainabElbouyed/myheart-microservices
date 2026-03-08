@@ -1,10 +1,17 @@
 package com.myheart.lab.service;
 
+import com.myheart.lab.client.PatientServiceClient;
+import com.myheart.lab.client.DoctorServiceClient;
+import com.myheart.lab.client.NotificationServiceClient;
 import com.myheart.lab.dto.LabResultRequestDTO;
 import com.myheart.lab.dto.LabResultResponseDTO;
 import com.myheart.lab.entity.LabResult;
 import com.myheart.lab.exception.LabResultNotFoundException;
 import com.myheart.lab.repository.LabResultRepository;
+import com.myheart.common.dto.PatientDTO;
+import com.myheart.common.dto.DoctorDTO;
+import com.myheart.common.dto.NotificationRequest;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,8 +36,91 @@ public class LabService {
     private final LabResultRepository labResultRepository;
     private final String uploadDir = "uploads/lab/";
     
+    // ========== CLIENTS FEIGN AVEC CIRCUIT BREAKER ==========
+    private final PatientServiceClient patientClient;
+    private final DoctorServiceClient doctorClient;
+    private final NotificationServiceClient notificationClient;
+    
+    // ========== MÉTHODES AVEC CIRCUIT BREAKER ==========
+    
+    /**
+     * Récupère les informations d'un patient
+     */
+    @CircuitBreaker(name = "patientService", fallbackMethod = "getPatientFallback")
+    public PatientDTO getPatient(String patientId) {
+        log.info("Appel à patient-service pour récupérer le patient: {}", patientId);
+        return patientClient.getPatientById(patientId);
+    }
+    
+    /**
+     * Fallback pour getPatient
+     */
+    public PatientDTO getPatientFallback(String patientId, Exception e) {
+        log.error("Fallback pour getPatient - patient-service indisponible: {}", e.getMessage());
+        return PatientDTO.builder()
+            .id(patientId)
+            .firstName("Patient")
+            .lastName("Inconnu")
+            .email("inconnu@fallback.com")
+            .build();
+    }
+    
+    /**
+     * Récupère les informations d'un médecin
+     */
+    @CircuitBreaker(name = "doctorService", fallbackMethod = "getDoctorFallback")
+    public DoctorDTO getDoctor(String doctorId) {
+        log.info("Appel à doctor-service pour récupérer le médecin: {}", doctorId);
+        return doctorClient.getDoctorById(doctorId);
+    }
+    
+    /**
+     * Fallback pour getDoctor
+     */
+    public DoctorDTO getDoctorFallback(String doctorId, Exception e) {
+        log.error("Fallback pour getDoctor - doctor-service indisponible: {}", e.getMessage());
+        return DoctorDTO.builder()
+            .id(doctorId)
+            .firstName("Médecin")
+            .lastName("Non disponible")
+            .specialty("Non spécifiée")
+            .build();
+    }
+    
+    /**
+     * Envoie une notification de résultat disponible
+     */
+    public void notifyResult(String patientId, String resultId) {
+        try {
+            NotificationRequest notification = new NotificationRequest();
+            notification.setPatientId(patientId);
+            notification.setType("LAB_RESULT_READY");
+            notification.setData(Map.of("resultId", resultId));
+            
+            notificationClient.sendNotification(notification);
+            log.info("📧 Notification envoyée pour le résultat: {}", resultId);
+        } catch (Exception e) {
+            log.error("Erreur envoi notification pour le résultat {}: {}", resultId, e.getMessage());
+        }
+    }
+    
+    // ========== MÉTHODE PRINCIPALE DE CRÉATION ==========
+    
     public LabResultResponseDTO createLabResult(LabResultRequestDTO request) {
         log.info("Creating new lab result for patient: {}", request.getPatientId());
+        
+        // Récupérer les informations du patient et du médecin (si nécessaire)
+        try {
+            PatientDTO patient = getPatient(request.getPatientId());
+            log.debug("Patient trouvé: {}", patient.getFirstName() + " " + patient.getLastName());
+            
+            if (request.getDoctorId() != null) {
+                DoctorDTO doctor = getDoctor(request.getDoctorId());
+                log.debug("Médecin trouvé: {}", doctor.getFirstName() + " " + doctor.getLastName());
+            }
+        } catch (Exception e) {
+            log.warn("Impossible de vérifier les informations patient/médecin, mais création continue: {}", e.getMessage());
+        }
         
         LabResult labResult = new LabResult();
         labResult.setPatientId(request.getPatientId());
@@ -47,12 +137,16 @@ public class LabService {
         labResult.setLabName(request.getLabName());
         labResult.setStatus(LabResult.LabStatus.PENDING);
         
-        
         LabResult savedResult = labResultRepository.save(labResult);
         log.info("Lab result created successfully with ID: {}", savedResult.getId());
         
+        // Notifier dès que le résultat est créé
+        notifyResult(savedResult.getPatientId(), savedResult.getId());
+        
         return LabResultResponseDTO.fromEntity(savedResult);
     }
+    
+    // ========== MÉTHODES DE RECHERCHE ==========
     
     public LabResultResponseDTO getLabResultById(String id) {
         LabResult labResult = labResultRepository.findById(id)
@@ -88,7 +182,9 @@ public class LabService {
                 .collect(Collectors.toList());
     }
     
-    // 👇 MÉTHODE CORRIGÉE : Renvoie des entités pour le contrôleur
+    /**
+     * Récupère les résultats en attente pour un médecin (retourne des entités)
+     */
     public List<LabResult> getPendingByDoctor(String doctorId) {
         log.info("Getting pending lab results for doctor: {}", doctorId);
         return labResultRepository.findByDoctorIdAndStatus(doctorId, "PENDING")
@@ -97,7 +193,9 @@ public class LabService {
                 .collect(Collectors.toList());
     }
     
-    // 👇 MÉTHODE CORRIGÉE : Pour les résultats en attente (version DTO)
+    /**
+     * Récupère les résultats en attente pour un médecin (retourne des DTOs)
+     */
     public List<LabResultResponseDTO> getPendingResultsForDoctor(String doctorId) {
         return labResultRepository.findByDoctorIdAndStatus(doctorId, "PENDING")
                 .stream()
@@ -106,7 +204,10 @@ public class LabService {
                 .collect(Collectors.toList());
     }
     
-    // 👇 NOUVELLE MÉTHODE : Compléter un résultat labo
+    /**
+     * Complète un résultat de laboratoire
+     */
+    @CircuitBreaker(name = "notificationService", fallbackMethod = "completeLabResultFallback")
     public LabResult completeLabResult(String id, Map<String, Object> results) {
         log.info("Completing lab result: {}", id);
         
@@ -117,6 +218,26 @@ public class LabService {
         if (results.containsKey("parameters")) {
             // Traitement des paramètres si nécessaire
         }
+        
+        labResult.setStatus(LabResult.LabStatus.COMPLETED);
+        labResult.setResultDate(LocalDateTime.now());
+        
+        LabResult savedResult = labResultRepository.save(labResult);
+        
+        // Notifier que le résultat est disponible
+        notifyResult(labResult.getPatientId(), labResult.getId());
+        
+        return savedResult;
+    }
+    
+    /**
+     * Fallback pour completeLabResult
+     */
+    public LabResult completeLabResultFallback(String id, Map<String, Object> results, Exception e) {
+        log.error("Fallback pour completeLabResult - notification-service indisponible: {}", e.getMessage());
+        
+        LabResult labResult = labResultRepository.findById(id)
+                .orElseThrow(() -> new LabResultNotFoundException("Lab result not found with id: " + id));
         
         labResult.setStatus(LabResult.LabStatus.COMPLETED);
         labResult.setResultDate(LocalDateTime.now());
@@ -156,6 +277,11 @@ public class LabService {
         
         if (status == LabResult.LabStatus.COMPLETED || status == LabResult.LabStatus.ABNORMAL) {
             labResult.setResultDate(LocalDateTime.now());
+            
+            // Notifier en cas de résultat anormal
+            if (status == LabResult.LabStatus.ABNORMAL) {
+                notifyResult(labResult.getPatientId(), labResult.getId());
+            }
         }
         
         LabResult updatedResult = labResultRepository.save(labResult);
@@ -180,6 +306,10 @@ public class LabService {
         labResult.setResultDate(LocalDateTime.now());
         
         LabResult updatedResult = labResultRepository.save(labResult);
+        
+        // Notifier le résultat
+        notifyResult(labResult.getPatientId(), labResult.getId());
+        
         return LabResultResponseDTO.fromEntity(updatedResult);
     }
     

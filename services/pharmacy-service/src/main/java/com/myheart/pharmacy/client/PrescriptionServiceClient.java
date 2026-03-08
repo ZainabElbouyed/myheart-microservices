@@ -10,21 +10,26 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
-@FeignClient(name = "prescription-service", url = "${prescription.service.url:http://localhost:8087}")
+@FeignClient(
+    name = "prescription-service",
+    path = "/api/prescriptions",
+    contextId = "pharmacyPrescriptionClient",
+    fallback = com.myheart.pharmacy.client.fallback.PrescriptionServiceFallback.class
+)
 public interface PrescriptionServiceClient {
     
-    @GetMapping("/api/prescriptions/status/{status}")
+    @GetMapping("/status/{status}")
     List<PrescriptionDTO> getPrescriptionsByStatus(@PathVariable("status") String status);
     
-    @GetMapping("/api/prescriptions/patient/{patientId}")
+    @GetMapping("/patient/{patientId}")
     List<PrescriptionDTO> getPatientPrescriptions(@PathVariable("patientId") String patientId);
     
-    @GetMapping("/api/prescriptions/{id}")
+    @GetMapping("/{id}")
     PrescriptionDTO getPrescriptionById(@PathVariable("id") String id);
     
-    @PostMapping("/api/prescriptions/{id}/fill")
+    @PostMapping("/{id}/fill")
     PrescriptionDTO fillPrescription(
             @PathVariable("id") String id,
-            @RequestParam String pharmacyId,
-            @RequestParam String pharmacist);
+            @RequestParam("pharmacyId") String pharmacyId,      
+            @RequestParam("pharmacist") String pharmacist);
 }
