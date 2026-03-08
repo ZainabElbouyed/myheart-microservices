@@ -1,14 +1,10 @@
 # 🫀 MyHeart - Système de Gestion de Soins de Santé en Microservices
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.1.5-green)
-![React](https://img.shields.io/badge/React-18.2.0-61dafb)
-![Docker](https://img.shields.io/badge/Docker-24.0.7-2496ed)
-![License](https://img.shields.io/badge/license-MIT-green)
-
 ## 📋 Description
 
 **MyHeart** est une application de gestion de soins de santé moderne, construite selon une architecture microservices. Elle permet aux patients de prendre des rendez-vous, aux médecins d'accéder aux dossiers médicaux, aux pharmacies de gérer les prescriptions et aux laboratoires de traiter les résultats d'analyses de manière transparente et efficace.
+
+Le système intègre **Consul** pour la découverte dynamique des services et **Resilience4j** pour la tolérance aux pannes, garantissant la disponibilité de la plateforme même en cas de défaillance partielle.
 
 Ce projet a été réalisé dans le cadre d'un mini-projet pédagogique sur l'architecture orientée services (SOA) et le développement web.
 
@@ -16,9 +12,14 @@ Ce projet a été réalisé dans le cadre d'un mini-projet pédagogique sur l'ar
 
 ```
 
-🌐 Frontend React (3000) → 🚪 API Gateway (8080) → ⚙️ Microservices → 💾 Bases de données
-                                                           ↓
-                                                     📨 RabbitMQ
+🌐 Frontend React (3000)
+        ↓
+🚪 API Gateway (8080)  ←→  🧭 Consul (8500) - Service Discovery
+        ↓
+⚙️  Microservices  ←→  🛡️ Resilience4j - Circuit Breakers
+        ↓
+💾 Bases de données  +  📨 RabbitMQ
+
 ```
 
 ### 📊 Schéma d'architecture
@@ -28,11 +29,15 @@ graph TD
     subgraph "Clients"
         A[Frontend React:3000]
     end
-    
+
     subgraph "API Gateway"
-        B[Spring Cloud Gateway:8080]
+        B[Spring Cloud Gateway:8080\nCircuit Breakers Resilience4j]
     end
-    
+
+    subgraph "Service Discovery"
+        SD[Consul:8500\nHealth Checks + Registry]
+    end
+
     subgraph "Microservices Backend"
         C1[auth-service:8081]
         C2[patient-service:8082]
@@ -44,20 +49,22 @@ graph TD
         C8[pharmacy-service:8088]
         C9[notification-service:8089]
     end
-    
+
     subgraph "Bases de données"
         D1[(PostgreSQL)]
         D2[(MongoDB)]
         D3[(MySQL)]
     end
-    
+
     subgraph "Message Broker"
         E[RabbitMQ:5672]
     end
-    
+
     A --> B
     B --> C1 & C2 & C3 & C4 & C5 & C6 & C7 & C8 & C9
-    
+    SD -.->|Enregistrement & Discovery| C1 & C2 & C3 & C4 & C5 & C6 & C7 & C8 & C9
+    SD -.->|Health Checks| B
+
     C1 --> D1
     C2 --> D1
     C3 --> D1
@@ -67,7 +74,7 @@ graph TD
     C7 --> D2
     C8 --> D3
     C9 --> D2
-    
+
     C4 -.->|Événements| E
     C5 -.->|Événements| E
     C6 -.->|Événements| E
@@ -86,6 +93,18 @@ graph TD
 - **Spring AMQP** - Communication asynchrone avec RabbitMQ
 - **Maven** - Gestion de dépendances
 
+### Service Discovery & Résilience
+- **Consul 1.17** - Service discovery, enregistrement automatique et health checks
+  - Enregistrement automatique de chaque service au démarrage
+  - Health checks périodiques via `/actuator/health` (toutes les 15s)
+  - Résolution dynamique des adresses IP (plus de configuration en dur)
+  - Interface web de monitoring sur `http://localhost:8500`
+- **Resilience4j 2.1** - Tolérance aux pannes multicouche
+  - **Circuit Breaker** : ouverture automatique à 50% d'échecs, fallback activé
+  - **Retry** : 3 tentatives automatiques sur erreurs transitoires
+  - **TimeLimiter** : timeout de 5s sur tous les appels inter-services
+  - Métriques exposées via Spring Boot Actuator
+    
 ### Frontend
 - **React 18** - Framework UI
 - **React Router 6** - Navigation
@@ -180,11 +199,13 @@ docker-compose build --no-cache
 }
 ```
 
-### 4. Lancer les bases de données et RabbitMQ
+### 4. Lancer Consul et les bases de données en premier
+
+⚠️ Consul doit démarrer avant tous les microservices pour que l'enregistrement fonctionne correctement.
 
 ```bash
-# Lancer uniquement les bases de données et RabbitMQ
-docker-compose up -d postgres mongodb mysql rabbitmq
+# Lancer uniquement Consul et les bases de données
+docker-compose up -d consul postgres mongodb mysql rabbitmq
 
 # Vérifier que les bases sont prêtes (attendre 30 secondes)
 Start-Sleep -Seconds 30
@@ -260,6 +281,7 @@ docker-compose logs -f
 
 - **Frontend** : http://localhost:3000
 - **API Gateway** : http://localhost:8080
+- **Consul UI** : http://localhost:8500
 - **RabbitMQ Management** : http://localhost:15672 (login: myheart/myheart123)
 
 ## 👤 Comptes de démonstration
@@ -342,8 +364,9 @@ docker-compose down -v
 
 | Type | Technologie | Cas d'usage |
 |------|-------------|-------------|
-| **Synchrone** | REST + Feign Client | Vérification patient/médecin, création facture |
+| **Synchrone** | REST + Feign Client + Consul | Vérification patient/médecin, création facture |
 | **Asynchrone** | RabbitMQ | Notifications, résultats labo |
+| **Résilience** | Resilience4j Circuit Breaker | Fallback automatique si service indisponible |
 
 ## 🧪 Tests
 
