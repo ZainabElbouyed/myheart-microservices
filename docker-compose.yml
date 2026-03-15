@@ -131,6 +131,15 @@ services:
       timeout: 10s
       retries: 3
 
+  # ============ MAILHOG ============
+  mailhog:
+    image: mailhog/mailhog
+    container_name: myheart-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Interface web
+    networks:
+      - myheart-network
   # ============ MICROSERVICES ============
   
   auth-service:
@@ -213,6 +222,10 @@ services:
       DB_NAME: appointmentdb
       DB_USER: myheart
       DB_PASSWORD: myheart123
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_KAFKA_PRODUCER_KEY_SERIALIZER: org.apache.kafka.common.serialization.StringSerializer
+      SPRING_KAFKA_PRODUCER_VALUE_SERIALIZER: org.springframework.kafka.support.serializer.JsonSerializer
+      SPRING_KAFKA_TOPICS_APPOINTMENT_EVENTS: appointment-events
     depends_on:
       postgres:
         condition: service_healthy
@@ -310,10 +323,14 @@ services:
       - RABBITMQ_PORT=5672
       - RABBITMQ_USERNAME=myheart
       - RABBITMQ_PASSWORD=myheart123
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
+      - SPRING_MAIL_HOST=mailhog
+      - SPRING_MAIL_PORT=1025
+      - SPRING_MAIL_USERNAME=
+      - SPRING_MAIL_PASSWORD=
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=false
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
+      - MAIL_FROM=no-reply@myheart.com
+      - TWILIO_ENABLED=false
       - JWT_SECRET=${JWT_SECRET:-myheartSecretKey2024ForJWTTokenGeneration}
     depends_on:
       mongodb:
@@ -357,5 +374,51 @@ services:
       REACT_APP_API_URL: http://localhost:8080/api
     depends_on:
       - api-gateway
+    networks:
+      - myheart-network
+  
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: myheart-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - myheart-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: myheart-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - myheart-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: myheart-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
     networks:
       - myheart-network

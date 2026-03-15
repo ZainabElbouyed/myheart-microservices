@@ -13,6 +13,7 @@ import com.myheart.appointment.dto.*;
 import com.myheart.appointment.entity.Appointment;
 import com.myheart.appointment.exception.AppointmentNotFoundException;
 import com.myheart.appointment.repository.AppointmentRepository;
+import com.myheart.appointment.service.AppointmentEventPublisher; 
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,18 +42,27 @@ public class AppointmentService {
     private final DoctorServiceClient doctorServiceClient;
     private final BillingServiceClient billingServiceClient;
 
+    private final AppointmentEventPublisher eventPublisher; 
+
     // ========== MÉTHODE PRINCIPALE ==========
-    
-    @CircuitBreaker(name = "patientService", fallbackMethod = "createAppointmentFallback")
     public AppointmentResponseDTO createAppointment(AppointmentRequestDTO request) {
         log.info("Creating appointment for patient: {}", request.getPatientId());
+
+        PatientDTO patient = getPatient(request.getPatientId());
+        DoctorDTO doctor = getDoctor(request.getDoctorId());
         
-        PatientDTO patient = patientServiceClient.getPatientById(request.getPatientId());
-        DoctorDTO doctor = doctorServiceClient.getDoctorById(request.getDoctorId());
-        
-        Boolean available = doctorServiceClient.checkAvailability(
-            doctor.getId(), request.getStartTime(), request.getEndTime());
-        
+        Boolean available = true;
+
+        try {
+            available = doctorServiceClient.checkAvailability(
+                    doctor.getId(),
+                    request.getStartTime(),
+                    request.getEndTime()
+            );
+        } catch (Exception e) {
+            log.warn("Doctor availability check failed: {}", e.getMessage());
+        }
+
         if (!available) {
             throw new RuntimeException("Doctor not available at this time");
         }
@@ -70,7 +80,11 @@ public class AppointmentService {
         
         Appointment savedAppointment = appointmentRepository.save(appointment);
         log.info("Appointment created with ID: {}", savedAppointment.getId());
+
         
+        // Publier l'événement Kafka pour notification-service
+        eventPublisher.publishAppointmentCreated(AppointmentResponseDTO.fromEntity(savedAppointment), patient, doctor);
+
         sendNotification(patient, doctor, savedAppointment);
         createInvoice(patient, doctor, savedAppointment);
         publishAppointmentEvent(patient, doctor, savedAppointment);
@@ -79,24 +93,36 @@ public class AppointmentService {
     }
     
     // ========== FALLBACK ==========
-    
-    public AppointmentResponseDTO createAppointmentFallback(AppointmentRequestDTO request, Exception e) {
-        log.error("Fallback pour createAppointment - Service(s) indisponible(s): {}", e.getMessage());
-        
-        Appointment appointment = new Appointment();
-        appointment.setPatientId(request.getPatientId());
-        appointment.setDoctorId(request.getDoctorId());
-        appointment.setStartTime(request.getStartTime());
-        appointment.setEndTime(request.getEndTime());
-        appointment.setType(request.getType());
-        appointment.setReason(request.getReason());
-        appointment.setStatus(Appointment.AppointmentStatus.SCHEDULED);
-        appointment.setNotes("Créé en mode dégradé - vérification à faire");
-        
-        Appointment savedAppointment = appointmentRepository.save(appointment);
-        log.info("Appointment created in DEGRADED mode with ID: {}", savedAppointment.getId());
-        
-        return AppointmentResponseDTO.fromEntity(savedAppointment);
+
+    @CircuitBreaker(name = "patientService", fallbackMethod = "getPatientFallback")
+    public PatientDTO getPatient(String patientId) {
+        return patientServiceClient.getPatientById(patientId);
+    }
+
+    public PatientDTO getPatientFallback(String patientId, Exception e) {
+        log.error("Patient service unavailable: {}", e.getMessage());
+
+        return PatientDTO.builder()
+                .id(patientId)
+                .firstName("Patient")
+                .lastName("Indisponible")
+                .email("fallback@system.com")
+                .build();
+    }
+
+    @CircuitBreaker(name = "doctorService", fallbackMethod = "getDoctorFallback")
+    public DoctorDTO getDoctor(String doctorId) {
+        return doctorServiceClient.getDoctorById(doctorId);
+    }
+
+    public DoctorDTO getDoctorFallback(String doctorId, Exception e) {
+        log.error("Doctor service unavailable: {}", e.getMessage());
+
+        return DoctorDTO.builder()
+                .id(doctorId)
+                .firstName("Médecin")
+                .lastName("Indisponible")
+                .build();
     }
     
         // ========== MÉTHODES MANQUANTES POUR LE CONTROLLER ==========
@@ -326,6 +352,20 @@ public class AppointmentService {
         }
     }
     
+    private com.myheart.common.dto.AppointmentDTO convertToCommonDTO(Appointment appointment) {
+        return com.myheart.common.dto.AppointmentDTO.builder()
+            .id(appointment.getId())
+            .patientId(appointment.getPatientId())
+            .patientName(appointment.getPatientName())
+            .doctorId(appointment.getDoctorId())
+            .doctorName(appointment.getDoctorName())
+            .startTime(appointment.getStartTime())
+            .endTime(appointment.getEndTime())
+            .status(appointment.getStatus().toString())
+            .type(appointment.getType() != null ? appointment.getType().toString() : null)
+            .reason(appointment.getReason())
+            .build();
+    }
     // ========== MÉTHODES EXISTANTES ==========
     
     public AppointmentResponseDTO getAppointmentById(String id) {
@@ -467,4 +507,6 @@ public class AppointmentService {
     public boolean isDoctorAvailable(String doctorId, LocalDateTime start, LocalDateTime end) {
         return !appointmentRepository.isDoctorAvailable(doctorId, start, end);
     }
+
+    
 }

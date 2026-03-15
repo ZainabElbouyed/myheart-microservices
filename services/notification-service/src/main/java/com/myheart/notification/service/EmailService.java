@@ -34,6 +34,9 @@ public class EmailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
     
+    @Value("${MAIL_FROM:no-reply@myheart.com}")
+    private String mailFrom;
+
     @Async
     public void sendEmail(EmailRequestDTO request) {
         try {
@@ -47,7 +50,7 @@ public class EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             
-            helper.setFrom(request.getFrom() != null ? request.getFrom() : fromEmail);
+            helper.setFrom(mailFrom);
             helper.setTo(request.getTo());
             
             if (request.getCc() != null) {

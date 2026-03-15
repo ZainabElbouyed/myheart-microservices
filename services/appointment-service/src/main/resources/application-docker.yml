@@ -29,6 +29,13 @@ spring:
     username: myheart
     password: myheart123
   
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    topics:
+      appointment-events: appointment-events
   cloud:
     consul:
       enabled: true

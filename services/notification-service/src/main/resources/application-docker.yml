@@ -15,7 +15,21 @@ spring:
     username: myheart
     password: myheart123
   
-  
+  kafka:
+    bootstrap-servers: kafka:9092
+
+    consumer:
+      group-id: notification-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        spring.json.trusted.packages: "com.myheart.common.events"
+
+    topics:
+      appointment-events: appointment-events
+
   
   cloud:
     consul:
