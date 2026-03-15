@@ -4,7 +4,7 @@
 
 **MyHeart** est une application de gestion de soins de santé moderne, construite selon une architecture microservices. Elle permet aux patients de prendre des rendez-vous, aux médecins d'accéder aux dossiers médicaux, aux pharmacies de gérer les prescriptions et aux laboratoires de traiter les résultats d'analyses de manière transparente et efficace.
 
-Le système intègre **Consul** pour la découverte dynamique des services et **Resilience4j** pour la tolérance aux pannes, garantissant la disponibilité de la plateforme même en cas de défaillance partielle.
+Le système intègre **Consul** pour la découverte dynamique des services et **Resilience4j** pour la tolérance aux pannes, garantissant la disponibilité de la plateforme même en cas de défaillance partielle, et **Kafka** comme bus de communication événementiel, garantissant la disponibilité et la scalabilité de la plateforme.
 
 Ce projet a été réalisé dans le cadre d'un mini-projet pédagogique sur l'architecture orientée services (SOA) et le développement web.
 
@@ -17,8 +17,10 @@ Ce projet a été réalisé dans le cadre d'un mini-projet pédagogique sur l'ar
 🚪 API Gateway (8080)  ←→  🧭 Consul (8500) - Service Discovery
         ↓
 ⚙️  Microservices  ←→  🛡️ Resilience4j - Circuit Breakers
-        ↓
-💾 Bases de données  +  📨 RabbitMQ
+        ↓                    ↓
+💾 Bases de données    📨 Kafka - Event Bus
+                             ↓
+                        📧 MailHog - Email Testing
 
 ```
 
@@ -91,6 +93,7 @@ graph TD
 - **Spring Security** + **JWT** - Authentification
 - **Spring Cloud OpenFeign** - Communication inter-services
 - **Spring AMQP** - Communication asynchrone avec RabbitMQ
+- **Spring for Apache Kafka** - Event streaming
 - **Maven** - Gestion de dépendances
 
 ### Service Discovery & Résilience
@@ -104,6 +107,16 @@ graph TD
   - **Retry** : 3 tentatives automatiques sur erreurs transitoires
   - **TimeLimiter** : timeout de 5s sur tous les appels inter-services
   - Métriques exposées via Spring Boot Actuator
+
+### Event Streaming & Notifications
+- **Apache Kafka 7.4.0** - Plateforme de streaming d'événements
+  - Topics : appointment-events
+  - Partitions : 3 partitions pour la scalabilité
+  - Garantie : livraison "au moins une fois"
+  - Kafka UI : interface de monitoring sur `http://localhost:8090`
+- **MailHog** - Serveur SMTP de test pour les emails
+  - SMTP : port 1025
+  - Interface web : `http://localhost:8025`
     
 ### Frontend
 - **React 18** - Framework UI
@@ -160,6 +173,45 @@ myheart-microservices/
 | **Pharmacie** | ✅ Voir les prescriptions en attente<br>✅ Délivrer les médicaments<br>✅ Gérer l'inventaire<br>✅ Alertes de stock faible |
 | **Laboratoire** | ✅ Voir les tests en attente<br>✅ Enregistrer les résultats<br>✅ Uploader des fichiers<br>✅ Notifier les médecins |
 
+### Flux typique de notification
+
+```mermaid
+flowchart LR
+    subgraph Entrée
+        REQ[Requête HTTP] --> VAL[Validation]
+    end
+    
+    subgraph ServiceRendezVous
+        VAL --> DB1[(Base de données)]
+        VAL --> EVENT[Créer événement]
+        EVENT --> PUB[Publier sur Kafka]
+    end
+    
+    subgraph Kafka
+        PUB --> TOPIC[Topic appointment-events]
+        TOPIC --> PART0[Partition 0]
+        TOPIC --> PART1[Partition 1]
+        TOPIC --> PART2[Partition 2]
+    end
+    
+    subgraph ServiceNotification
+        PART0 --> CONS[Consommateur]
+        PART1 --> CONS
+        PART2 --> CONS
+        CONS --> PROCESS[Traiter événement]
+        PROCESS --> TEMPLATE[Générer template]
+        TEMPLATE --> SEND[Envoyer email]
+    end
+    
+    subgraph MailHog
+        SEND --> SMTP[SMTP Server]
+        SMTP --> WEB[Interface Web:8025]
+    end
+    
+    WEB --> VISU[Développeur visualise]
+```
+
+
 ## 🚦 Prérequis
 
 - [Docker](https://www.docker.com/products/docker-desktop/) (version 24.0+)
@@ -211,7 +263,20 @@ docker-compose up -d consul postgres mongodb mysql rabbitmq
 Start-Sleep -Seconds 30
 ```
 
-### 5. Lancer les microservices dans l'ordre
+### 5. Lancer Kafka (dépend de Zookeeper)
+
+```bash
+# Démarrage de Kafka
+docker-compose up -d zookeeper
+Start-Sleep -Seconds 30
+
+docker-compose up -d kafka kafka-ui
+
+# Attente 45s pour Kafka
+Start-Sleep -Seconds 45
+```
+
+### 6. Lancer les microservices dans l'ordre
 
 ```bash
 # Lancer auth-service (dépend de postgres)
@@ -236,7 +301,7 @@ docker-compose up -d api-gateway
 docker-compose ps
 ```
 
-### 6. Initialiser les données de test
+### 7. Initialiser les données de test
 
 ```powershell
 # Exécuter le script d'initialisation des données de test (PowerShell)
@@ -252,7 +317,7 @@ Ce script va :
 - Créer un pharmacien et des médicaments
 - Créer une facture
 
-### 7. Lancer le frontend
+### 8. Lancer le frontend
 
 ```bash
 # Option 1 : Via Docker
@@ -264,7 +329,7 @@ npm install
 npm start
 ```
 
-### 8. Vérifier que tout fonctionne
+### 9. Vérifier que tout fonctionne
 
 ```bash
 # Voir tous les conteneurs en cours d'exécution
@@ -282,6 +347,8 @@ docker-compose logs -f
 - **Frontend** : http://localhost:3000
 - **API Gateway** : http://localhost:8080
 - **Consul UI** : http://localhost:8500
+- **Kafka UI** : http://localhost:8090	
+- **MailHog** :	http://localhost:8025	
 - **RabbitMQ Management** : http://localhost:15672 (login: myheart/myheart123)
 
 ## 👤 Comptes de démonstration
@@ -366,7 +433,9 @@ docker-compose down -v
 |------|-------------|-------------|
 | **Synchrone** | REST + Feign Client + Consul | Vérification patient/médecin, création facture |
 | **Asynchrone** | RabbitMQ | Notifications, résultats labo |
+| **Asynchrone** | Kafka | Événements de rendez-vous, notifications |
 | **Résilience** | Resilience4j Circuit Breaker | Fallback automatique si service indisponible |
+| **Emails** | MailHog (SMTP) | Tests de notifications en développement |
 
 ## 🧪 Tests
 
